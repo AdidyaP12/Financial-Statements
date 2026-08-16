@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0f151b" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/svg+xml" href="logo.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+<title>Financial-Statements</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #0f151b; color: #e8e2d4; font-family: -apple-system, 'Segoe UI', sans-serif; -webkit-text-size-adjust: 100%; }
+  .num { font-family: 'SF Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+  .tabbtn { background: none; border: none; color: #7d8794; padding: 12px 4px; cursor: pointer; font-size: 13.5px; border-bottom: 2px solid transparent; font-family: inherit; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tabbtn.active { color: #e8dcc0; border-bottom-color: #c9a15a; }
+  .card { background: #161d25; border: 1px solid #232c37; border-radius: 12px; padding: 16px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #1e2731; gap: 10px; }
+  .row:last-child { border-bottom: none; }
+  .delbtn { background: none; border: none; color: #5f6a78; cursor: pointer; font-size: 15px; padding: 4px 6px; flex-shrink: 0; }
+  .delbtn:hover { color: #d2766c; }
+  h1 { font-family: Georgia, serif; }
+  input, select { font-size: 16px; }
+  @media (max-width: 480px) { .card { padding: 13px; border-radius: 10px; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script>
+(function () {
+  var e = React.createElement;
+  var useState = React.useState;
+  var useEffect = React.useEffect;
+  var useMemo = React.useMemo;
+
+  function fmt(n) { return 'Rp' + Math.round(n || 0).toLocaleString('id-ID'); }
+  function todayISO() { return new Date().toISOString().slice(0, 10); }
+  var STORAGE_KEY = 'keuanganPribadi:v1';
+  var JENIS_PEMASUKAN = ['Usaha/Kerja', 'Tetap/Rutin', 'Investasi (Realized)', 'Lain-lain'];
+  var JENIS_PENGELUARAN = ['Kebutuhan Pokok', 'Biaya Operasional Aset', 'Pendidikan', 'Cicilan/Utang', 'Lifestyle/Hiburan', 'Tabungan/Investasi', 'Biaya Administrasi Keuangan'];
+  var TIPE_WALLET = ['Cash', 'Bank', 'E-Wallet', 'RDN'];
+  var JENDELA_STATUS_HARI = 30;
+
+  var SEED = { wallets: [], transaksi: [], utang: [], harta: [] };
+
+  function hitungStatusHarta(harta, transaksi) {
+    if (!harta.statusOtomatis) return { berlaku: false };
+    var batas = new Date();
+    batas.setDate(batas.getDate() - JENDELA_STATUS_HARI);
+    var incomeTerkait = transaksi.filter(function (t) {
+      return t.tipe === 'pemasukan' && t.jenis === 'Usaha/Kerja' && new Date(t.tanggal) >= batas;
+    }).sort(function (a, b) { return new Date(b.tanggal) - new Date(a.tanggal); });
+    var adaIncome = incomeTerkait.length > 0;
+    return { berlaku: true, status: adaIncome ? 'Aset' : 'Netral', tanggalTerakhirIncome: adaIncome ? incomeTerkait[0].tanggal : null };
+  }
+
+  function useLocalData(key, initial) {
+    var state = useState(function () {
+      try {
+        var raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : initial;
+      } catch (err) { return initial; }
+    });
+    var data = state[0], setData = state[1];
+    useEffect(function () {
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch (err) {}
+    }, [data]);
+    return [data, setData];
+  }
+
+  var inputStyle = { width: '100%', boxSizing: 'border-box', background: '#12181f', border: '1px solid #2c3644', borderRadius: 8, padding: '9px 11px', color: '#f2ede3', fontSize: 14, fontFamily: 'inherit' };
+  var btnPrimary = { background: '#c9a15a', color: '#1b1305', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' };
+  var btnGhost = { background: 'transparent', color: '#c9a15a', border: '1px solid #4a4022', borderRadius: 8, padding: '9px 15px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' };
+
+  function Logo(props) {
+    var size = props.size || 26;
+    return e('svg', { width: size, height: size, viewBox: '0 0 32 32', fill: 'none' },
+      e('rect', { x: 2, y: 6, width: 28, height: 20, rx: 4, stroke: '#c9a15a', strokeWidth: 2 }),
+      e('path', { d: 'M2 12h28', stroke: '#c9a15a', strokeWidth: 2 }),
+      e('circle', { cx: 23, cy: 19, r: 3.2, fill: '#c9a15a' })
+    );
+  }
+
+  function Field(props) {
+    return e('div', { style: { marginBottom: 12 } },
+      e('label', { style: { display: 'block', fontSize: 12, color: '#8b95a3', marginBottom: 5 } }, props.label),
+      props.children
+    );
+  }
+
+  function Modal(props) {
+    return e('div', {
+      style: { position: 'fixed', inset: 0, background: 'rgba(10,14,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
+      onClick: props.onClose
+    },
+      e('div', {
+        style: { background: '#1b232d', border: '1px solid #2c3644', borderRadius: 14, width: '100%', maxWidth: 440, padding: 22, maxHeight: '85vh', overflowY: 'auto' },
+        onClick: function (ev) { ev.stopPropagation(); }
+      },
+        e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+          e('h3', { style: { margin: 0, fontSize: 19, color: '#f2ede3' } }, props.title),
+          e('button', { onClick: props.onClose, style: { background: 'none', border: 'none', color: '#8b95a3', cursor: 'pointer', fontSize: 20 } }, '\u2715')
+        ),
+        props.children
+      )
+    );
+  }
+
+  function DeleteBtn(props) {
+    return e('button', {
+      className: 'delbtn', title: 'Hapus', onClick: function (ev) {
+        ev.stopPropagation();
+        if (window.confirm('Hapus data ini?')) props.onClick();
+      }
+    }, '\u2715');
+  }
+
+  function TransaksiForm(props) {
+    var wallets = props.wallets;
+    var s_tipe = useState('pengeluaran'); var tipe = s_tipe[0], setTipe = s_tipe[1];
+    var s_jenis = useState(JENIS_PENGELUARAN[0]); var jenis = s_jenis[0], setJenis = s_jenis[1];
+    var s_kat = useState(''); var kategori = s_kat[0], setKategori = s_kat[1];
+    var s_nom = useState(''); var nominal = s_nom[0], setNominal = s_nom[1];
+    var s_w = useState(wallets[0] ? wallets[0].id : ''); var walletId = s_w[0], setWalletId = s_w[1];
+    var s_wt = useState(wallets[1] ? wallets[1].id : ''); var walletTujuanId = s_wt[0], setWalletTujuanId = s_wt[1];
+    var s_admin = useState(''); var biayaAdmin = s_admin[0], setBiayaAdmin = s_admin[1];
+    var s_tgl = useState(todayISO()); var tanggal = s_tgl[0], setTanggal = s_tgl[1];
+    var jenisList = tipe === 'pemasukan' ? JENIS_PEMASUKAN : tipe === 'pengeluaran' ? JENIS_PENGELUARAN : null;
+
+    if (wallets.length === 0) {
+      return e('div', { style: { fontSize: 13, color: '#a9b2bf' } }, 'Tambah minimal 1 Wallet dulu sebelum catat transaksi.');
+    }
+
+    var children = [
+      e(Field, { label: 'Tipe', key: 'f1' }, e('select', {
+        style: inputStyle, value: tipe, onChange: function (ev) {
+          var v = ev.target.value; setTipe(v); setJenis(v === 'pemasukan' ? JENIS_PEMASUKAN[0] : JENIS_PENGELUARAN[0]);
+        }
+      },
+        e('option', { value: 'pemasukan' }, 'Pemasukan'),
+        e('option', { value: 'pengeluaran' }, 'Pengeluaran'),
+        e('option', { value: 'transfer' }, 'Transfer')
+      ))
+    ];
+    if (jenisList) {
+      children.push(e(Field, { label: 'Jenis', key: 'f2' }, e('select', { style: inputStyle, value: jenis, onChange: function (ev) { setJenis(ev.target.value); } },
+        jenisList.map(function (j) { return e('option', { key: j }, j); })
+      )));
+      children.push(e(Field, { label: 'Kategori (opsional)', key: 'f3' }, e('input', { style: inputStyle, value: kategori, onChange: function (ev) { setKategori(ev.target.value); }, placeholder: 'mis. Laundry, Bensin' })));
+    }
+    children.push(e(Field, { label: 'Nominal', key: 'f4' }, e('input', { style: inputStyle, type: 'number', value: nominal, onChange: function (ev) { setNominal(ev.target.value); }, placeholder: '0' })));
+    children.push(e(Field, { label: tipe === 'transfer' ? 'Dari Wallet' : 'Wallet', key: 'f5' }, e('select', { style: inputStyle, value: walletId, onChange: function (ev) { setWalletId(ev.target.value); } },
+      wallets.map(function (w) { return e('option', { key: w.id, value: w.id }, w.nama); })
+    )));
+    if (tipe === 'transfer') {
+      children.push(e(Field, { label: 'Ke Wallet', key: 'f6' }, e('select', { style: inputStyle, value: walletTujuanId, onChange: function (ev) { setWalletTujuanId(ev.target.value); } },
+        wallets.map(function (w) { return e('option', { key: w.id, value: w.id }, w.nama); })
+      )));
+      children.push(e(Field, { label: 'Biaya admin transfer (opsional)', key: 'f7' }, e('input', { style: inputStyle, type: 'number', value: biayaAdmin, onChange: function (ev) { setBiayaAdmin(ev.target.value); }, placeholder: '0' })));
+    }
+    children.push(e(Field, { label: 'Tanggal', key: 'f8' }, e('input', { style: inputStyle, type: 'date', value: tanggal, onChange: function (ev) { setTanggal(ev.target.value); } })));
+    children.push(e('button', {
+      key: 'btn', style: Object.assign({}, btnPrimary, { width: '100%', marginTop: 6 }), onClick: function () {
+        if (!nominal) return;
+        props.onSave({ tipe: tipe, jenis: jenisList ? jenis : null, kategori: kategori, nominal: Number(nominal), walletId: walletId, walletTujuanId: tipe === 'transfer' ? walletTujuanId : null, biayaAdmin: Number(biayaAdmin) || 0, tanggal: tanggal });
+      }
+    }, 'Simpan'));
+
+    return e('div', null, children);
+  }
+
+  function WalletForm(props) {
+    var s_n = useState(''); var nama = s_n[0], setNama = s_n[1];
+    var s_t = useState(TIPE_WALLET[0]); var tipe = s_t[0], setTipe = s_t[1];
+    var s_s = useState(''); var saldoAwal = s_s[0], setSaldoAwal = s_s[1];
+    return e('div', null,
+      e(Field, { label: 'Nama Wallet' }, e('input', { style: inputStyle, value: nama, onChange: function (ev) { setNama(ev.target.value); }, placeholder: 'mis. DANA, Bank Jago' })),
+      e(Field, { label: 'Tipe' }, e('select', { style: inputStyle, value: tipe, onChange: function (ev) { setTipe(ev.target.value); } }, TIPE_WALLET.map(function (t) { return e('option', { key: t }, t); }))),
+      e(Field, { label: 'Saldo Awal' }, e('input', { style: inputStyle, type: 'number', value: saldoAwal, onChange: function (ev) { setSaldoAwal(ev.target.value); }, placeholder: '0' })),
+      e('button', { style: Object.assign({}, btnPrimary, { width: '100%', marginTop: 6 }), onClick: function () { if (!nama) return; props.onSave({ nama: nama, tipe: tipe, saldoAwal: Number(saldoAwal) || 0 }); } }, 'Simpan')
+    );
+  }
+
+  function HartaForm(props) {
+    var s_n = useState(''); var nama = s_n[0], setNama = s_n[1];
+    var s_hb = useState(''); var hargaBeli = s_hb[0], setHargaBeli = s_hb[1];
+    var s_ns = useState(''); var nilaiSekarang = s_ns[0], setNilaiSekarang = s_ns[1];
+    var s_tb = useState(todayISO()); var tanggalBeli = s_tb[0], setTanggalBeli = s_tb[1];
+    var s_tag = useState('normal'); var tag = s_tag[0], setTag = s_tag[1];
+    var s_so = useState(false); var statusOtomatis = s_so[0], setStatusOtomatis = s_so[1];
+    return e('div', null,
+      e(Field, { label: 'Nama Barang' }, e('input', { style: inputStyle, value: nama, onChange: function (ev) { setNama(ev.target.value); } })),
+      e(Field, { label: 'Harga Beli' }, e('input', { style: inputStyle, type: 'number', value: hargaBeli, onChange: function (ev) { setHargaBeli(ev.target.value); } })),
+      e(Field, { label: 'Nilai Sekarang' }, e('input', { style: inputStyle, type: 'number', value: nilaiSekarang, onChange: function (ev) { setNilaiSekarang(ev.target.value); } })),
+      e(Field, { label: 'Tanggal Beli' }, e('input', { style: inputStyle, type: 'date', value: tanggalBeli, onChange: function (ev) { setTanggalBeli(ev.target.value); } })),
+      e(Field, { label: 'Status' }, e('select', { style: inputStyle, value: tag, onChange: function (ev) { setTag(ev.target.value); } },
+        e('option', { value: 'normal' }, 'Normal (bisa dijual)'),
+        e('option', { value: 'non-jual' }, 'Non-Jual / Sentimental')
+      )),
+      e(Field, { label: 'Status Aset/Netral' }, e('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#c3cad3' } },
+        e('input', { type: 'checkbox', checked: statusOtomatis, onChange: function (ev) { setStatusOtomatis(ev.target.checked); } }),
+        'Reassess otomatis (Aset kalau ada pemasukan Usaha/Kerja 30 hari terakhir)'
+      )),
+      e('button', { style: Object.assign({}, btnPrimary, { width: '100%', marginTop: 6 }), onClick: function () { if (!nama) return; props.onSave({ nama: nama, hargaBeli: Number(hargaBeli) || 0, nilaiSekarang: Number(nilaiSekarang) || 0, tanggalBeli: tanggalBeli, tag: tag, statusOtomatis: statusOtomatis }); } }, 'Simpan')
+    );
+  }
+
+  function UtangForm(props) {
+    var s_n = useState(''); var nama = s_n[0], setNama = s_n[1];
+    var s_pk = useState(''); var pokokPinjaman = s_pk[0], setPokokPinjaman = s_pk[1];
+    var s_ad = useState('0'); var potonganAdminAwal = s_ad[0], setPotonganAdminAwal = s_ad[1];
+    var s_cb = useState(''); var cicilanPerBulan = s_cb[0], setCicilanPerBulan = s_cb[1];
+    var s_tc = useState(''); var totalCicilan = s_tc[0], setTotalCicilan = s_tc[1];
+    var s_jt = useState(''); var tanggalJatuhTempo = s_jt[0], setTanggalJatuhTempo = s_jt[1];
+    return e('div', null,
+      e(Field, { label: 'Nama Utang/Tagihan' }, e('input', { style: inputStyle, value: nama, onChange: function (ev) { setNama(ev.target.value); }, placeholder: 'mis. Pinjol A, UKT' })),
+      e(Field, { label: 'Pokok Pinjaman Tercatat' }, e('input', { style: inputStyle, type: 'number', value: pokokPinjaman, onChange: function (ev) { setPokokPinjaman(ev.target.value); } })),
+      e(Field, { label: 'Potongan Admin Awal (kalau ada)' }, e('input', { style: inputStyle, type: 'number', value: potonganAdminAwal, onChange: function (ev) { setPotonganAdminAwal(ev.target.value); } })),
+      e(Field, { label: 'Cicilan per Bulan' }, e('input', { style: inputStyle, type: 'number', value: cicilanPerBulan, onChange: function (ev) { setCicilanPerBulan(ev.target.value); } })),
+      e(Field, { label: 'Total Jumlah Cicilan (x bulan)' }, e('input', { style: inputStyle, type: 'number', value: totalCicilan, onChange: function (ev) { setTotalCicilan(ev.target.value); } })),
+      e(Field, { label: 'Tanggal Jatuh Tempo (tanggal berapa tiap bulan)' }, e('input', { style: inputStyle, type: 'number', min: 1, max: 31, value: tanggalJatuhTempo, onChange: function (ev) { setTanggalJatuhTempo(ev.target.value); } })),
+      e('button', {
+        style: Object.assign({}, btnPrimary, { width: '100%', marginTop: 6 }), onClick: function () {
+          if (!nama || !cicilanPerBulan || !totalCicilan) return;
+          props.onSave({ nama: nama, pokokPinjaman: Number(pokokPinjaman) || 0, potonganAdminAwal: Number(potonganAdminAwal) || 0, cicilanPerBulan: Number(cicilanPerBulan), totalCicilan: Number(totalCicilan), cicilanTerbayar: 0, tanggalJatuhTempo: Number(tanggalJatuhTempo) || 1 });
+        }
+      }, 'Simpan')
+    );
+  }
+
+  function App() {
+    var dataState = useLocalData(STORAGE_KEY, SEED);
+    var data = dataState[0], setData = dataState[1];
+    var s_tab = useState('dashboard'); var tab = s_tab[0], setTab = s_tab[1];
+    var s_modal = useState(null); var modal = s_modal[0], setModal = s_modal[1];
+
+    var walletSaldo = useMemo(function () {
+      var map = {};
+      data.wallets.forEach(function (w) { map[w.id] = w.saldoAwal; });
+      data.transaksi.forEach(function (t) {
+        if (t.tipe === 'pemasukan') map[t.walletId] = (map[t.walletId] || 0) + t.nominal;
+        else if (t.tipe === 'pengeluaran') map[t.walletId] = (map[t.walletId] || 0) - t.nominal;
+        else if (t.tipe === 'transfer') {
+          map[t.walletId] = (map[t.walletId] || 0) - t.nominal - (t.biayaAdmin || 0);
+          map[t.walletTujuanId] = (map[t.walletTujuanId] || 0) + t.nominal;
+        }
+      });
+      return map;
+    }, [data]);
+
+    var totalWallet = Object.keys(walletSaldo).reduce(function (a, k) { return a + walletSaldo[k]; }, 0);
+    var totalHarta = data.harta.reduce(function (a, h) { return a + h.nilaiSekarang; }, 0);
+    var utangDetail = data.utang.map(function (u) {
+      var nominalDiterima = u.pokokPinjaman - u.potonganAdminAwal;
+      var totalRencanaDibayar = u.cicilanPerBulan * u.totalCicilan;
+      var bunga = totalRencanaDibayar - u.pokokPinjaman;
+      var totalBiayaRiil = u.potonganAdminAwal + bunga;
+      var persenBiaya = nominalDiterima > 0 ? (totalBiayaRiil / nominalDiterima) * 100 : 0;
+      var sisaCicilan = u.totalCicilan - u.cicilanTerbayar;
+      var sisaTagihan = u.cicilanPerBulan * sisaCicilan;
+      return Object.assign({}, u, { nominalDiterima: nominalDiterima, bunga: bunga, totalBiayaRiil: totalBiayaRiil, persenBiaya: persenBiaya, sisaCicilan: sisaCicilan, sisaTagihan: sisaTagihan });
+    });
+    var totalUtang = utangDetail.reduce(function (a, u) { return a + u.sisaTagihan; }, 0);
+    var kekayaanBersih = totalWallet + totalHarta - totalUtang;
+
+    function addTransaksi(t) { setData(function (d) { return Object.assign({}, d, { transaksi: [Object.assign({ id: 't' + Date.now() }, t)].concat(d.transaksi) }); }); }
+    function addWallet(w) { setData(function (d) { return Object.assign({}, d, { wallets: d.wallets.concat([Object.assign({ id: 'w' + Date.now() }, w)]) }); }); }
+    function addHarta(h) { setData(function (d) { return Object.assign({}, d, { harta: d.harta.concat([Object.assign({ id: 'h' + Date.now() }, h)]) }); }); }
+    function addUtang(u) { setData(function (d) { return Object.assign({}, d, { utang: d.utang.concat([Object.assign({ id: 'u' + Date.now() }, u)]) }); }); }
+    function bayarCicilan(utangId) {
+      setData(function (d) { return Object.assign({}, d, { utang: d.utang.map(function (u) { return u.id === utangId ? Object.assign({}, u, { cicilanTerbayar: Math.min(u.cicilanTerbayar + 1, u.totalCicilan) }) : u; }) }); });
+    }
+    function delWallet(id) { setData(function (d) { return Object.assign({}, d, { wallets: d.wallets.filter(function (w) { return w.id !== id; }), transaksi: d.transaksi.filter(function (t) { return t.walletId !== id && t.walletTujuanId !== id; }) }); }); }
+    function delHarta(id) { setData(function (d) { return Object.assign({}, d, { harta: d.harta.filter(function (h) { return h.id !== id; }) }); }); }
+    function delUtang(id) { setData(function (d) { return Object.assign({}, d, { utang: d.utang.filter(function (u) { return u.id !== id; }) }); }); }
+    function delTransaksi(id) { setData(function (d) { return Object.assign({}, d, { transaksi: d.transaksi.filter(function (t) { return t.id !== id; }) }); }); }
+
+    var TABS = [['dashboard', 'Dashboard'], ['transaksi', 'Transaksi'], ['wallet', 'Wallet'], ['utang', 'Utang'], ['neraca', 'Neraca']];
+
+    var tabButtons = e('div', { style: { display: 'flex', gap: 18, borderBottom: '1px solid #232c37', marginBottom: 20, overflowX: 'auto' } },
+      TABS.map(function (pair) {
+        return e('button', { key: pair[0], className: 'tabbtn' + (tab === pair[0] ? ' active' : ''), onClick: function () { setTab(pair[0]); } }, pair[1]);
+      })
+    );
+
+    var content = null;
+
+    if (tab === 'dashboard') {
+      content = e('div', { style: { display: 'grid', gap: 14 } },
+        e('div', { className: 'card', style: { background: 'linear-gradient(135deg,#1c2833,#161d25)', borderColor: '#2c3644' } },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 6 } }, 'TOTAL KEKAYAAN BERSIH'),
+          e('div', { className: 'num', style: { fontSize: 28, color: kekayaanBersih >= 0 ? '#e8dcc0' : '#d2766c', fontWeight: 700 } }, fmt(kekayaanBersih)),
+          e('div', { style: { display: 'flex', gap: 18, marginTop: 14, fontSize: 12.5, color: '#7d8794', flexWrap: 'wrap' } },
+            e('span', null, 'Wallet ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalWallet))),
+            e('span', null, 'Harta ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalHarta))),
+            e('span', null, 'Utang ', e('b', { className: 'num', style: { color: '#d2766c' } }, '-' + fmt(totalUtang)))
+          )
+        ),
+        e('div', { className: 'card' },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'SALDO PER WALLET'),
+          data.wallets.length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada wallet.') : null,
+          data.wallets.map(function (w) {
+            return e('div', { className: 'row', key: w.id },
+              e('span', { style: { fontSize: 14 } }, w.nama + ' ', e('span', { style: { color: '#5f6a78', fontSize: 11 } }, '\u00b7 ' + w.tipe)),
+              e('span', { className: 'num', style: { fontSize: 14 } }, fmt(walletSaldo[w.id]))
+            );
+          })
+        ),
+        e('div', { className: 'card' },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'TAGIHAN AKTIF'),
+          utangDetail.filter(function (u) { return u.sisaCicilan > 0; }).map(function (u) {
+            return e('div', { className: 'row', key: u.id },
+              e('div', null, e('div', { style: { fontSize: 14 } }, u.nama), e('div', { style: { fontSize: 11, color: '#5f6a78' } }, 'Jatuh tempo tgl ' + u.tanggalJatuhTempo + ' \u00b7 sisa ' + u.sisaCicilan + 'x \u00b7 biaya riil ' + u.persenBiaya.toFixed(1) + '%')),
+              e('span', { className: 'num', style: { fontSize: 14, color: '#d2766c' } }, fmt(u.sisaTagihan))
+            );
+          }),
+          utangDetail.filter(function (u) { return u.sisaCicilan > 0; }).length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Tidak ada tagihan aktif.') : null
+        ),
+        e('button', { style: btnPrimary, onClick: function () { setModal('transaksi'); } }, '+ Catat Transaksi')
+      );
+    } else if (tab === 'transaksi') {
+      content = e('div', null,
+        e('button', { style: Object.assign({}, btnPrimary, { marginBottom: 16 }), onClick: function () { setModal('transaksi'); } }, '+ Transaksi Baru'),
+        e('div', { className: 'card' },
+          data.transaksi.length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi.') : null,
+          data.transaksi.map(function (t) {
+            var w = data.wallets.filter(function (x) { return x.id === t.walletId; })[0];
+            var wt = data.wallets.filter(function (x) { return x.id === t.walletTujuanId; })[0];
+            var color = t.tipe === 'pemasukan' ? '#a9c9a3' : t.tipe === 'pengeluaran' ? '#d2766c' : '#8fb3c9';
+            return e('div', { className: 'row', key: t.id },
+              e('div', null,
+                e('div', { style: { fontSize: 14 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '')),
+                e('div', { style: { fontSize: 11, color: '#5f6a78' } }, t.tanggal + ' \u00b7 ' + (w ? w.nama : '') + (wt ? ' \u2192 ' + wt.nama : ''))
+              ),
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                e('span', { className: 'num', style: { color: color, fontSize: 14 } }, (t.tipe === 'pengeluaran' ? '-' : t.tipe === 'pemasukan' ? '+' : '') + fmt(t.nominal)),
+                e(DeleteBtn, { onClick: function () { delTransaksi(t.id); } })
+              )
+            );
+          })
+        )
+      );
+    } else if (tab === 'wallet') {
+      content = e('div', null,
+        e('button', { style: Object.assign({}, btnPrimary, { marginBottom: 16 }), onClick: function () { setModal('wallet'); } }, '+ Tambah Wallet'),
+        e('div', { className: 'card' },
+          data.wallets.length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada wallet.') : null,
+          data.wallets.map(function (w) {
+            return e('div', { className: 'row', key: w.id },
+              e('span', null, w.nama + ' ', e('span', { style: { fontSize: 11, color: '#5f6a78' } }, '\u00b7 ' + w.tipe)),
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                e('span', { className: 'num' }, fmt(walletSaldo[w.id])),
+                e(DeleteBtn, { onClick: function () { delWallet(w.id); } })
+              )
+            );
+          })
+        )
+      );
+    } else if (tab === 'utang') {
+      content = e('div', null,
+        e('button', { style: Object.assign({}, btnPrimary, { marginBottom: 16 }), onClick: function () { setModal('utang'); } }, '+ Tambah Utang'),
+        e('div', { style: { display: 'grid', gap: 12 } },
+          utangDetail.length === 0 ? e('div', { className: 'card', style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada utang/tagihan.') : null,
+          utangDetail.map(function (u) {
+            return e('div', { className: 'card', key: u.id },
+              e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' } },
+                e('b', { style: { fontSize: 15 } }, u.nama),
+                e('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  u.sisaCicilan > 0 ? e('button', { style: btnGhost, onClick: function () { bayarCicilan(u.id); } }, 'Tandai cicilan terbayar') : e('span', { style: { fontSize: 12, color: '#a9c9a3' } }, 'Lunas'),
+                  e(DeleteBtn, { onClick: function () { delUtang(u.id); } })
+                )
+              ),
+              e('div', { style: { fontSize: 13, color: '#a9b2bf', display: 'grid', gap: 5 } },
+                e('div', { className: 'row' }, e('span', null, 'Pokok pinjaman'), e('span', { className: 'num' }, fmt(u.pokokPinjaman))),
+                e('div', { className: 'row' }, e('span', null, 'Potongan admin awal'), e('span', { className: 'num' }, '-' + fmt(u.potonganAdminAwal))),
+                e('div', { className: 'row' }, e('span', null, 'Nominal diterima bersih'), e('span', { className: 'num' }, fmt(u.nominalDiterima))),
+                e('div', { className: 'row' }, e('span', null, 'Cicilan / bulan'), e('span', { className: 'num' }, fmt(u.cicilanPerBulan) + ' \u00d7 ' + u.totalCicilan)),
+                e('div', { className: 'row' }, e('span', null, 'Bunga cicilan'), e('span', { className: 'num', style: { color: '#d2766c' } }, fmt(u.bunga))),
+                e('div', { className: 'row' }, e('span', null, 'Total biaya riil'), e('span', { className: 'num', style: { color: '#d2766c' } }, fmt(u.totalBiayaRiil) + ' (' + u.persenBiaya.toFixed(1) + '%)')),
+                e('div', { className: 'row' }, e('span', null, 'Sisa tagihan'), e('span', { className: 'num', style: { fontWeight: 700 } }, fmt(u.sisaTagihan)))
+              )
+            );
+          })
+        )
+      );
+    } else if (tab === 'neraca') {
+      content = e('div', null,
+        e('button', { style: Object.assign({}, btnPrimary, { marginBottom: 16 }), onClick: function () { setModal('harta'); } }, '+ Tambah Harta'),
+        e('div', { className: 'card' },
+          data.harta.length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada harta tercatat.') : null,
+          data.harta.map(function (h) {
+            var delta = h.nilaiSekarang - h.hargaBeli;
+            var st = hitungStatusHarta(h, data.transaksi);
+            return e('div', { className: 'row', key: h.id, style: { alignItems: 'flex-start' } },
+              e('div', null,
+                e('div', { style: { fontSize: 14 } },
+                  h.nama,
+                  h.tag === 'non-jual' ? e('span', { style: { fontSize: 10, color: '#c9a15a', marginLeft: 6, border: '1px solid #4a4022', borderRadius: 4, padding: '1px 5px' } }, 'NON-JUAL') : null,
+                  st.berlaku ? e('span', { style: { fontSize: 10, marginLeft: 6, border: '1px solid ' + (st.status === 'Aset' ? '#2e4a2e' : '#4a3a22'), color: st.status === 'Aset' ? '#a9c9a3' : '#c9a15a', borderRadius: 4, padding: '1px 5px' } }, st.status === 'Aset' ? 'ASET \u00b7 ada income 30 hari' : 'NETRAL \u00b7 gak ada income 30 hari') : null
+                ),
+                e('div', { style: { fontSize: 11, color: '#5f6a78' } }, 'Beli ' + fmt(h.hargaBeli) + ' \u00b7 ' + (delta >= 0 ? '+' : '') + fmt(delta) + (st.berlaku && st.tanggalTerakhirIncome ? ' \u00b7 income terakhir ' + st.tanggalTerakhirIncome : ''))
+              ),
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                e('span', { className: 'num', style: { fontSize: 14 } }, fmt(h.nilaiSekarang)),
+                e(DeleteBtn, { onClick: function () { delHarta(h.id); } })
+              )
+            );
+          })
+        )
+      );
+    }
+
+    var modalEl = null;
+    if (modal === 'transaksi') modalEl = e(Modal, { title: 'Transaksi Baru', onClose: function () { setModal(null); } }, e(TransaksiForm, { wallets: data.wallets, onSave: function (t) { addTransaksi(t); setModal(null); } }));
+    if (modal === 'wallet') modalEl = e(Modal, { title: 'Wallet Baru', onClose: function () { setModal(null); } }, e(WalletForm, { onSave: function (w) { addWallet(w); setModal(null); } }));
+    if (modal === 'harta') modalEl = e(Modal, { title: 'Harta Baru', onClose: function () { setModal(null); } }, e(HartaForm, { onSave: function (h) { addHarta(h); setModal(null); } }));
+    if (modal === 'utang') modalEl = e(Modal, { title: 'Utang/Tagihan Baru', onClose: function () { setModal(null); } }, e(UtangForm, { onSave: function (u) { addUtang(u); setModal(null); } }));
+
+    return e('div', { style: { minHeight: '100vh' } },
+      e('div', { style: { maxWidth: 720, margin: '0 auto', padding: '20px 16px 60px' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 } },
+          e(Logo, null),
+          e('h1', { style: { fontSize: 21, margin: 0, color: '#f2ede3' } }, 'Financial-Statements'),
+          e('span', { style: { fontSize: 11, color: '#5f6a78', marginLeft: 'auto' } }, 'v0.3')
+        ),
+        e('p', { style: { color: '#7d8794', fontSize: 13, marginTop: 2, marginBottom: 20 } }, 'Keuangan pribadi \u2014 catat sendiri, mulai dari nol'),
+        tabButtons,
+        content
+      ),
+      modalEl
+    );
+  }
+
+  var root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(e(App));
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (err) {
+        console.log('Service worker gagal daftar:', err);
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
