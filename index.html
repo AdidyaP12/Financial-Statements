@@ -85,6 +85,47 @@
     );
   }
 
+  function TabIcon(props) {
+    var name = props.name, active = props.active;
+    var c = active ? '#e8dcc0' : '#7d8794';
+    var s = 19;
+    if (name === 'dashboard') {
+      return e('svg', { width: s, height: s, viewBox: '0 0 24 24', fill: 'none' },
+        e('rect', { x: 3, y: 3, width: 8, height: 8, rx: 1.5, stroke: c, strokeWidth: 1.8 }),
+        e('rect', { x: 13, y: 3, width: 8, height: 5, rx: 1.5, stroke: c, strokeWidth: 1.8 }),
+        e('rect', { x: 13, y: 10, width: 8, height: 11, rx: 1.5, stroke: c, strokeWidth: 1.8 }),
+        e('rect', { x: 3, y: 13, width: 8, height: 8, rx: 1.5, stroke: c, strokeWidth: 1.8 })
+      );
+    }
+    if (name === 'transaksi') {
+      return e('svg', { width: s, height: s, viewBox: '0 0 24 24', fill: 'none' },
+        e('path', { d: 'M4 8h13l-3-3.5', stroke: c, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        e('path', { d: 'M20 16H7l3 3.5', stroke: c, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' })
+      );
+    }
+    if (name === 'wallet') {
+      return e('svg', { width: s, height: s, viewBox: '0 0 24 24', fill: 'none' },
+        e('rect', { x: 3, y: 6, width: 18, height: 13, rx: 2, stroke: c, strokeWidth: 1.8 }),
+        e('path', { d: 'M3 10h18', stroke: c, strokeWidth: 1.8 }),
+        e('circle', { cx: 17, cy: 14.5, r: 1.6, fill: c })
+      );
+    }
+    if (name === 'utang') {
+      return e('svg', { width: s, height: s, viewBox: '0 0 24 24', fill: 'none' },
+        e('path', { d: 'M12 3l9 16H3z', stroke: c, strokeWidth: 1.8, strokeLinejoin: 'round' }),
+        e('path', { d: 'M12 10v4', stroke: c, strokeWidth: 1.8, strokeLinecap: 'round' }),
+        e('circle', { cx: 12, cy: 17, r: 1, fill: c })
+      );
+    }
+    if (name === 'neraca') {
+      return e('svg', { width: s, height: s, viewBox: '0 0 24 24', fill: 'none' },
+        e('path', { d: 'M12 3v18M5 8l-2 5a3 3 0 006 0zM19 8l-2 5a3 3 0 006 0z', stroke: c, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        e('path', { d: 'M4 21h16M12 3l7 5M12 3l-7 5', stroke: c, strokeWidth: 1.8, strokeLinecap: 'round' })
+      );
+    }
+    return null;
+  }
+
   function Field(props) {
     return e('div', { style: { marginBottom: 12 } },
       e('label', { style: { display: 'block', fontSize: 12, color: '#8b95a3', marginBottom: 5 } }, props.label),
@@ -232,137 +273,331 @@
     );
   }
 
-  function hitungGrafikPemasukan(transaksi) {
-    var pemasukan = transaksi.filter(function (t) { return t.tipe === 'pemasukan'; });
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function toISODate(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function daysForRange(rangeKey) { return rangeKey === 'hari' ? 0 : rangeKey === 'minggu' ? 6 : 29; }
+  function rangeStartEnd(rangeKey) {
+    var end = new Date(); end.setHours(0, 0, 0, 0);
+    var start = new Date(end); start.setDate(start.getDate() - daysForRange(rangeKey));
+    return { start: start, end: end };
+  }
+  function enumerateDates(start, end) {
+    var arr = []; var d = new Date(start);
+    while (d <= end) { arr.push(toISODate(d)); d.setDate(d.getDate() + 1); }
+    return arr;
+  }
+  function jamDari(waktuInput) {
+    return waktuInput ? new Date(waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+  }
+
+  function buildDailySeries(transaksi, tipe, rangeKey) {
+    var rs = rangeStartEnd(rangeKey);
+    var dates = enumerateDates(rs.start, rs.end);
     var byDate = {};
-    pemasukan.forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
-    var dates = Object.keys(byDate).sort();
+    transaksi.filter(function (t) { return t.tipe === tipe; }).forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
     var cum = 0;
     return dates.map(function (d) {
-      cum += byDate[d];
-      return { tanggal: d, harian: byDate[d], kumulatif: cum };
+      var harian = byDate[d] || 0;
+      cum += harian;
+      return { tanggal: d, harian: harian, kumulatif: cum };
     });
   }
 
-  function hitungGrafikPengeluaran(transaksi) {
-    var pengeluaran = transaksi.filter(function (t) { return t.tipe === 'pengeluaran'; });
-    var byDate = {};
-    pengeluaran.forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
-    var dates = Object.keys(byDate).sort();
+  function buildIntradayPoints(transaksi, tipe) {
+    var todayStr = toISODate(new Date());
+    var todays = transaksi.filter(function (t) { return t.tipe === tipe && t.tanggal === todayStr; })
+      .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); });
     var cum = 0;
-    return dates.map(function (d) {
-      cum += byDate[d];
-      return { tanggal: d, harian: byDate[d], kumulatif: cum };
+    return todays.map(function (t) {
+      cum += t.nominal;
+      return { id: t.id, waktuInput: t.waktuInput, nominal: t.nominal, kumulatif: cum, jenis: t.jenis, kategori: t.kategori };
     });
   }
 
-  function hitungGrafikNetHarian(transaksi) {
-    var byDate = {};
-    transaksi.forEach(function (t) {
-      if (t.tipe === 'pemasukan') byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal;
-      else if (t.tipe === 'pengeluaran') byDate[t.tanggal] = (byDate[t.tanggal] || 0) - t.nominal;
-    });
-    var dates = Object.keys(byDate).sort();
-    var cum = 0;
-    return dates.map(function (d) {
-      cum += byDate[d];
-      return { tanggal: d, net: byDate[d], kumulatif: cum };
-    });
+  function RangeSelector(props) {
+    var opts = [['hari', 'Hari Ini'], ['minggu', '1 Minggu'], ['bulan', '1 Bulan']];
+    return e('div', { style: { display: 'flex', gap: 6, marginBottom: 10 } },
+      opts.map(function (o) {
+        var active = props.value === o[0];
+        return e('button', {
+          key: o[0], onClick: function () { props.onChange(o[0]); },
+          style: { fontSize: 10.5, padding: '4px 9px', borderRadius: 6, border: '1px solid ' + (active ? '#c9a15a' : '#2c3644'), background: active ? '#2a2313' : 'transparent', color: active ? '#e8dcc0' : '#7d8794', cursor: 'pointer', fontFamily: 'inherit' }
+        }, o[1]);
+      })
+    );
   }
 
-  function IncomeChart(props) {
-    var points = props.points;
-    var selectedDate = props.selectedDate;
-    var onSelect = props.onSelect;
-    var color = props.color || '#c9a15a';
-    if (points.length === 0) {
-      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada data buat ditampilin di grafik.');
-    }
-    var W = 300, H = 110, padL = 4, padR = 4, padT = 10, padB = 4;
-    var maxY = Math.max.apply(null, points.map(function (p) { return p.kumulatif; })) || 1;
-    var n = points.length;
+  function shortFmt(n) {
+    var neg = n < 0; n = Math.abs(n);
+    var s = n >= 1000000 ? (n / 1000000).toFixed(1).replace('.0', '') + 'jt' : n >= 1000 ? Math.round(n / 1000) + 'rb' : String(n);
+    return (neg ? '-' : '') + s;
+  }
+
+  function DailyLineChart(props) {
+    var series = props.series, color = props.color, selected = props.selected, onSelect = props.onSelect;
+    var ada = series.some(function (p) { return p.harian !== 0; });
+    var W = 300, H = 120, padL = 6, padR = 6, padT = 20, padB = 16;
+    var n = series.length;
+    var maxKum = Math.max.apply(null, series.map(function (p) { return p.kumulatif; }).concat([0]));
+    var minKum = Math.min.apply(null, series.map(function (p) { return p.kumulatif; }).concat([0]));
+    var rangeKum = (maxKum - minKum) || 1;
+    function yAt(v) { return H - padB - ((v - minKum) / rangeKum) * (H - padT - padB); }
     var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
     function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
-    function yAt(v) { return H - padB - (v / maxY) * (H - padT - padB); }
-    var pathStr = points.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
-    var circles = points.map(function (p, i) {
-      var isSel = selectedDate === p.tanggal;
+    var pathStr = series.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
+    var maxHarianIdx = 0;
+    series.forEach(function (p, i) { if (p.harian > series[maxHarianIdx].harian) maxHarianIdx = i; });
+    var puncakAda = series[maxHarianIdx].harian > 0;
+    var circles = series.map(function (p, i) {
+      var isSel = selected === p.tanggal;
+      var isPuncak = puncakAda && i === maxHarianIdx;
       return e('circle', {
-        key: p.tanggal, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : 3.2,
+        key: p.tanggal, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : isPuncak ? 4.2 : 2.4,
         fill: isSel ? '#e8dcc0' : color, stroke: '#0f151b', strokeWidth: 1,
         style: { cursor: 'pointer' }, onClick: function () { onSelect(p.tanggal); }
       });
     });
+    var label = puncakAda ? e('text', {
+      x: xAt(maxHarianIdx), y: Math.max(10, yAt(series[maxHarianIdx].kumulatif) - 9), fill: color,
+      fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+    }, shortFmt(series[maxHarianIdx].harian)) : null;
     return e('div', null,
-      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 130, display: 'block' } },
-        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6 }),
-        circles
+      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 138, display: 'block' } },
+        e('line', { x1: padL, y1: yAt(0), x2: W - padR, y2: yAt(0), stroke: '#232c37', strokeWidth: 1 }),
+        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6, opacity: ada ? 1 : 0.35 }),
+        circles, label
       ),
       e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
-        e('span', null, points[0].tanggal),
-        e('span', null, points[n - 1].tanggal)
+        e('span', null, series[0].tanggal),
+        e('span', null, series[n - 1].tanggal)
       )
     );
   }
 
-  function NetChart(props) {
-    var points = props.points;
-    var selectedDate = props.selectedDate;
-    var onSelect = props.onSelect;
-    var HIJAU = '#7fb37a', MERAH = '#d2766c';
+  function IntradayChart(props) {
+    var points = props.points, color = props.color, selectedId = props.selectedId, onSelect = props.onSelect;
     if (points.length === 0) {
-      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada data buat ditampilin di grafik.');
+      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi hari ini.');
     }
-    var W = 300, H = 130, padL = 4, padR = 4, padT = 12, padB = 14;
+    var W = 300, H = 120, padL = 6, padR = 6, padT = 20, padB = 16;
     var n = points.length;
-    var baseline = H - padB - (H - padT - padB) * 0.35;
-    var maxAbsNet = Math.max.apply(null, points.map(function (p) { return Math.abs(p.net); })) || 1;
-    var barBudget = (H - padT - padB) * 0.32;
-    var kumVals = points.map(function (p) { return p.kumulatif; });
-    var minKum = Math.min.apply(null, kumVals.concat([0]));
-    var maxKum = Math.max.apply(null, kumVals.concat([0]));
+    var maxKum = Math.max.apply(null, points.map(function (p) { return p.kumulatif; }).concat([0]));
+    var minKum = Math.min.apply(null, points.map(function (p) { return p.kumulatif; }).concat([0]));
     var rangeKum = (maxKum - minKum) || 1;
-    var lineTop = padT, lineBottom = baseline - 6;
-    function yKum(v) { return lineBottom - ((v - minKum) / rangeKum) * (lineBottom - lineTop); }
+    function yAt(v) { return H - padB - ((v - minKum) / rangeKum) * (H - padT - padB); }
     var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
     function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
-    var barW = Math.max(2, Math.min(10, xStep * 0.5));
-
-    var bars = points.map(function (p, i) {
-      var h = (Math.abs(p.net) / maxAbsNet) * barBudget;
-      var isNeg = p.net < 0;
-      var y = isNeg ? baseline : baseline - h;
-      return e('rect', { key: 'bar' + p.tanggal, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.55 });
-    });
-
-    var segments = [];
-    for (var i = 1; i < n; i++) {
-      var naik = points[i].kumulatif >= points[i - 1].kumulatif;
-      segments.push(e('line', {
-        key: 'seg' + i, x1: xAt(i - 1), y1: yKum(points[i - 1].kumulatif), x2: xAt(i), y2: yKum(points[i].kumulatif),
-        stroke: naik ? HIJAU : MERAH, strokeWidth: 1.8
-      }));
-    }
+    var pathStr = points.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
+    var maxIdx = 0;
+    points.forEach(function (p, i) { if (p.nominal > points[maxIdx].nominal) maxIdx = i; });
     var circles = points.map(function (p, i) {
-      var isSel = selectedDate === p.tanggal;
+      var isSel = selectedId === p.id;
+      var isPuncak = i === maxIdx;
       return e('circle', {
-        key: 'c' + p.tanggal, cx: xAt(i), cy: yKum(p.kumulatif), r: isSel ? 5 : 3,
-        fill: isSel ? '#e8dcc0' : (p.net >= 0 ? HIJAU : MERAH), stroke: '#0f151b', strokeWidth: 1,
-        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.tanggal); }
+        key: p.id, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : isPuncak ? 4.2 : 2.8,
+        fill: isSel ? '#e8dcc0' : color, stroke: '#0f151b', strokeWidth: 1,
+        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.id); }
       });
     });
+    var label = e('text', {
+      x: xAt(maxIdx), y: Math.max(10, yAt(points[maxIdx].kumulatif) - 9), fill: color,
+      fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+    }, shortFmt(points[maxIdx].nominal));
+    return e('div', null,
+      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 138, display: 'block' } },
+        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6 }),
+        circles, label
+      ),
+      e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, toISODate(new Date()))
+    );
+  }
+
+  function RangeChart(props) {
+    var tipe = props.tipe, color = props.color, transaksi = props.transaksi;
+    var s_range = useState('bulan'); var range = s_range[0], setRange = s_range[1];
+    var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
+    var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
+    var isHari = range === 'hari';
+
+    var chartEl, drillEl = null;
+    if (isHari) {
+      var pts = buildIntradayPoints(transaksi, tipe);
+      chartEl = e(IntradayChart, { points: pts, color: color, selectedId: selId, onSelect: function (id) { setSelId(selId === id ? null : id); } });
+      if (selId) {
+        var p = pts.filter(function (x) { return x.id === selId; })[0];
+        if (p) drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
+          jamDari(p.waktuInput) + ' \u00b7 ' + p.jenis + (p.kategori ? ' \u00b7 ' + p.kategori : '') + ' \u2014 ',
+          e('span', { className: 'num', style: { color: color } }, fmt(p.nominal))
+        );
+      }
+    } else {
+      var series = buildDailySeries(transaksi, tipe, range);
+      chartEl = e(DailyLineChart, { series: series, color: color, selected: selDate, onSelect: function (d) { setSelDate(selDate === d ? null : d); } });
+      if (selDate) {
+        var items = transaksi.filter(function (t) { return t.tipe === tipe && t.tanggal === selDate; });
+        drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Tanggal ' + selDate),
+          items.length === 0 ? e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Tidak ada transaksi.') : items.map(function (t) {
+            return e('div', { className: 'row', key: t.id },
+              e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jamDari(t.waktuInput)),
+              e('span', { className: 'num', style: { fontSize: 13, color: color } }, fmt(t.nominal))
+            );
+          })
+        );
+      }
+    }
 
     return e('div', null,
-      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 150, display: 'block' } },
-        e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
-        bars,
-        segments,
-        circles
-      ),
-      e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
-        e('span', null, points[0].tanggal),
-        e('span', null, points[n - 1].tanggal)
-      )
+      e(RangeSelector, { value: range, onChange: function (r) { setRange(r); setSelDate(null); setSelId(null); } }),
+      chartEl, drillEl
+    );
+  }
+
+  function NetRangeChart(props) {
+    var transaksi = props.transaksi;
+    var HIJAU = '#7fb37a', MERAH = '#d2766c';
+    var s_range = useState('bulan'); var range = s_range[0], setRange = s_range[1];
+    var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
+    var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
+
+    var chartEl, drillEl = null;
+
+    if (range === 'hari') {
+      var todayStr = toISODate(new Date());
+      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === todayStr; })
+        .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); });
+      if (todays.length === 0) {
+        chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi hari ini.');
+      } else {
+        var W = 300, H = 130, padL = 6, padR = 6, padT = 16, padB = 16;
+        var n = todays.length;
+        var maxAbs = Math.max.apply(null, todays.map(function (t) { return t.nominal; })) || 1;
+        var baseline = H / 2;
+        var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
+        function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
+        var barW = Math.max(3, Math.min(14, xStep * 0.5));
+        var bars = todays.map(function (t, i) {
+          var isNeg = t.tipe === 'pengeluaran';
+          var h = (t.nominal / maxAbs) * (baseline - padT);
+          var y = isNeg ? baseline : baseline - h;
+          var isSel = selId === t.id;
+          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: isSel ? 1 : 0.6, style: { cursor: 'pointer' }, onClick: function () { setSelId(selId === t.id ? null : t.id); } });
+        });
+        chartEl = e('div', null,
+          e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block' } },
+            e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
+            bars
+          ),
+          e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, todayStr)
+        );
+        if (selId) {
+          var t2 = todays.filter(function (x) { return x.id === selId; })[0];
+          if (t2) drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
+            jamDari(t2.waktuInput) + ' \u00b7 ' + t2.jenis + (t2.kategori ? ' \u00b7 ' + t2.kategori : '') + ' \u2014 ',
+            e('span', { className: 'num', style: { color: t2.tipe === 'pengeluaran' ? MERAH : HIJAU } }, (t2.tipe === 'pengeluaran' ? '-' : '+') + fmt(t2.nominal))
+          );
+        }
+      }
+    } else if (range === 'minggu') {
+      var rs = rangeStartEnd('minggu');
+      var dates = enumerateDates(rs.start, rs.end);
+      var byDateIn = {}, byDateOut = {};
+      transaksi.forEach(function (t) {
+        if (t.tipe === 'pemasukan') byDateIn[t.tanggal] = Math.max(byDateIn[t.tanggal] || 0, t.nominal);
+        else if (t.tipe === 'pengeluaran') byDateOut[t.tanggal] = Math.max(byDateOut[t.tanggal] || 0, t.nominal);
+      });
+      var W2 = 300, H2 = 120, padL2 = 6, padR2 = 6, padT2 = 16, padB2 = 16;
+      var maxV = Math.max.apply(null, dates.map(function (d) { return Math.max(byDateIn[d] || 0, byDateOut[d] || 0); }).concat([1]));
+      function yAt2(v) { return H2 - padB2 - (v / maxV) * (H2 - padT2 - padB2); }
+      var n2 = dates.length;
+      var xStep2 = n2 > 1 ? (W2 - padL2 - padR2) / (n2 - 1) : 0;
+      function xAt2(i) { return n2 > 1 ? padL2 + i * xStep2 : W2 / 2; }
+      var pathIn = dates.map(function (d, i) { return (i === 0 ? 'M' : 'L') + xAt2(i).toFixed(1) + ',' + yAt2(byDateIn[d] || 0).toFixed(1); }).join(' ');
+      var pathOut = dates.map(function (d, i) { return (i === 0 ? 'M' : 'L') + xAt2(i).toFixed(1) + ',' + yAt2(byDateOut[d] || 0).toFixed(1); }).join(' ');
+      var dotsIn = dates.map(function (d, i) { return e('circle', { key: 'in' + d, cx: xAt2(i), cy: yAt2(byDateIn[d] || 0), r: selDate === d ? 5 : 2.6, fill: HIJAU, stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
+      var dotsOut = dates.map(function (d, i) { return e('circle', { key: 'out' + d, cx: xAt2(i), cy: yAt2(byDateOut[d] || 0), r: selDate === d ? 5 : 2.6, fill: MERAH, stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
+      chartEl = e('div', null,
+        e('svg', { viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block' } },
+          e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.6 }),
+          e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.6 }),
+          dotsIn, dotsOut
+        ),
+        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
+          e('span', null, dates[0]), e('span', null, dates[n2 - 1])
+        )
+      );
+      if (selDate) {
+        var items2 = transaksi.filter(function (t) { return t.tanggal === selDate && (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran'); });
+        drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Tanggal ' + selDate + ' (pemasukan tertinggi ' + fmt(byDateIn[selDate] || 0) + ', pengeluaran tertinggi ' + fmt(byDateOut[selDate] || 0) + ')'),
+          items2.map(function (t) {
+            var c = t.tipe === 'pemasukan' ? HIJAU : MERAH;
+            return e('div', { className: 'row', key: t.id },
+              e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jamDari(t.waktuInput)),
+              e('span', { className: 'num', style: { fontSize: 13, color: c } }, (t.tipe === 'pengeluaran' ? '-' : '+') + fmt(t.nominal))
+            );
+          })
+        );
+      }
+    } else {
+      var rs3 = rangeStartEnd('bulan');
+      var dates3 = enumerateDates(rs3.start, rs3.end);
+      var byDateNet = {};
+      transaksi.forEach(function (t) {
+        if (t.tipe === 'pemasukan') byDateNet[t.tanggal] = (byDateNet[t.tanggal] || 0) + t.nominal;
+        else if (t.tipe === 'pengeluaran') byDateNet[t.tanggal] = (byDateNet[t.tanggal] || 0) - t.nominal;
+      });
+      var cum3 = 0;
+      var points3 = dates3.map(function (d) { cum3 += (byDateNet[d] || 0); return { tanggal: d, net: byDateNet[d] || 0, kumulatif: cum3 }; });
+      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 4, padT3 = 12, padB3 = 14;
+      var n3 = points3.length;
+      var baseline3 = H3 - padB3 - (H3 - padT3 - padB3) * 0.35;
+      var maxAbsNet = Math.max.apply(null, points3.map(function (p) { return Math.abs(p.net); })) || 1;
+      var barBudget = (H3 - padT3 - padB3) * 0.32;
+      var kumVals = points3.map(function (p) { return p.kumulatif; });
+      var minKum = Math.min.apply(null, kumVals.concat([0]));
+      var maxKum = Math.max.apply(null, kumVals.concat([0]));
+      var rangeKum = (maxKum - minKum) || 1;
+      var lineTop = padT3, lineBottom = baseline3 - 6;
+      function yKum3(v) { return lineBottom - ((v - minKum) / rangeKum) * (lineBottom - lineTop); }
+      var xStep3 = n3 > 1 ? (W3 - padL3 - padR3) / (n3 - 1) : 0;
+      function xAt3(i) { return n3 > 1 ? padL3 + i * xStep3 : W3 / 2; }
+      var barW3 = Math.max(2, Math.min(10, xStep3 * 0.5));
+      var bars3 = points3.map(function (p, i) {
+        var h = (Math.abs(p.net) / maxAbsNet) * barBudget;
+        var isNeg = p.net < 0;
+        var y = isNeg ? baseline3 : baseline3 - h;
+        return e('rect', { key: 'bar' + p.tanggal, x: xAt3(i) - barW3 / 2, y: y, width: barW3, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.55 });
+      });
+      var segments3 = [];
+      for (var i3 = 1; i3 < n3; i3++) {
+        var naik = points3[i3].kumulatif >= points3[i3 - 1].kumulatif;
+        segments3.push(e('line', { key: 'seg' + i3, x1: xAt3(i3 - 1), y1: yKum3(points3[i3 - 1].kumulatif), x2: xAt3(i3), y2: yKum3(points3[i3].kumulatif), stroke: naik ? HIJAU : MERAH, strokeWidth: 1.8 }));
+      }
+      var circles3 = points3.map(function (p, i) {
+        var isSel = selDate === p.tanggal;
+        return e('circle', { key: 'c' + p.tanggal, cx: xAt3(i), cy: yKum3(p.kumulatif), r: isSel ? 5 : 3, fill: isSel ? '#e8dcc0' : (p.net >= 0 ? HIJAU : MERAH), stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === p.tanggal ? null : p.tanggal); } });
+      });
+      chartEl = e('div', null,
+        e('svg', { viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block' } },
+          e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
+          bars3, segments3, circles3
+        ),
+        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
+          e('span', null, points3[0].tanggal), e('span', null, points3[n3 - 1].tanggal)
+        )
+      );
+      if (selDate) {
+        var pSel = points3.filter(function (p) { return p.tanggal === selDate; })[0];
+        drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+          e('div', { style: { fontSize: 13 } }, selDate + ' \u2014 Net ', e('span', { className: 'num', style: { color: pSel && pSel.net >= 0 ? HIJAU : MERAH } }, fmt(pSel ? pSel.net : 0)))
+        );
+      }
+    }
+
+    return e('div', null,
+      e(RangeSelector, { value: range, onChange: function (r) { setRange(r); setSelDate(null); setSelId(null); } }),
+      chartEl, drillEl
     );
   }
 
@@ -372,9 +607,6 @@
     var data = dataState[0], setData = dataState[1];
     var s_tab = useState('dashboard'); var tab = s_tab[0], setTab = s_tab[1];
     var s_modal = useState(null); var modal = s_modal[0], setModal = s_modal[1];
-    var s_chartDate = useState(null); var chartDate = s_chartDate[0], setChartDate = s_chartDate[1];
-    var s_chartDateOut = useState(null); var chartDateOut = s_chartDateOut[0], setChartDateOut = s_chartDateOut[1];
-    var s_chartDateNet = useState(null); var chartDateNet = s_chartDateNet[0], setChartDateNet = s_chartDateNet[1];
 
     var walletSaldo = useMemo(function () {
       var map = {};
@@ -417,11 +649,11 @@
     function delUtang(id) { setData(function (d) { return Object.assign({}, d, { utang: d.utang.filter(function (u) { return u.id !== id; }) }); }); }
     function delTransaksi(id) { setData(function (d) { return Object.assign({}, d, { transaksi: d.transaksi.filter(function (t) { return t.id !== id; }) }); }); }
 
-    var TABS = [['dashboard', 'Dashboard'], ['transaksi', 'Transaksi'], ['wallet', 'Wallet'], ['utang', 'Utang'], ['neraca', 'Neraca']];
+    var TABS = [['dashboard', 'dashboard'], ['transaksi', 'transaksi'], ['wallet', 'wallet'], ['utang', 'utang'], ['neraca', 'neraca']];
 
-    var tabButtons = e('div', { style: { display: 'flex', gap: 18, borderBottom: '1px solid #232c37', marginBottom: 20, overflowX: 'auto' } },
+    var tabButtons = e('div', { style: { display: 'flex', gap: 22, borderBottom: '1px solid #232c37', marginBottom: 20, overflowX: 'auto' } },
       TABS.map(function (pair) {
-        return e('button', { key: pair[0], className: 'tabbtn' + (tab === pair[0] ? ' active' : ''), onClick: function () { setTab(pair[0]); } }, pair[1]);
+        return e('button', { key: pair[0], className: 'tabbtn' + (tab === pair[0] ? ' active' : ''), style: { padding: '10px 4px' }, onClick: function () { setTab(pair[0]); } }, e(TabIcon, { name: pair[1], active: tab === pair[0] }));
       })
     );
 
@@ -433,55 +665,22 @@
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 6 } }, 'TOTAL KEKAYAAN BERSIH'),
           e('div', { className: 'num', style: { fontSize: 28, color: kekayaanBersih >= 0 ? '#e8dcc0' : '#d2766c', fontWeight: 700 } }, fmt(kekayaanBersih)),
           e('div', { style: { display: 'flex', gap: 18, marginTop: 14, fontSize: 12.5, color: '#7d8794', flexWrap: 'wrap' } },
-            e('span', null, 'Wallet ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalWallet))),
+            e('span', null, 'Saldo ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalWallet))),
             e('span', null, 'Harta ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalHarta))),
             e('span', null, 'Utang ', e('b', { className: 'num', style: { color: '#d2766c' } }, '-' + fmt(totalUtang)))
           )
         ),
         e('div', { className: 'card' },
-          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'TOTAL AKUMULATIF (NET HARIAN)'),
-          e(NetChart, { points: hitungGrafikNetHarian(data.transaksi), selectedDate: chartDateNet, onSelect: function (d) { setChartDateNet(chartDateNet === d ? null : d); } }),
-          chartDateNet ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Semua transaksi tanggal ' + chartDateNet + ' (urut waktu input)'),
-            data.transaksi.filter(function (t) { return t.tanggal === chartDateNet; })
-              .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); })
-              .map(function (t) {
-                var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-                var warna = t.tipe === 'pemasukan' ? '#a9c9a3' : t.tipe === 'pengeluaran' ? '#d2766c' : '#8fb3c9';
-                return e('div', { className: 'row', key: t.id },
-                  e('span', { style: { fontSize: 13 } }, jam + ' \u00b7 ' + (t.jenis || 'Transfer') + (t.kategori ? ' \u00b7 ' + t.kategori : '')),
-                  e('span', { className: 'num', style: { fontSize: 13, color: warna } }, (t.tipe === 'pengeluaran' ? '-' : t.tipe === 'pemasukan' ? '+' : '') + fmt(t.nominal))
-                );
-              })
-          ) : null
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'TOTAL AKUMULATIF'),
+          e(NetRangeChart, { transaksi: data.transaksi })
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'PEMASUKAN AKUMULATIF'),
-          e(IncomeChart, { points: hitungGrafikPemasukan(data.transaksi), selectedDate: chartDate, onSelect: function (d) { setChartDate(chartDate === d ? null : d); }, color: '#7fb37a' }),
-          chartDate ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Pemasukan tanggal ' + chartDate),
-            data.transaksi.filter(function (t) { return t.tipe === 'pemasukan' && t.tanggal === chartDate; }).map(function (t) {
-              var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-              return e('div', { className: 'row', key: t.id },
-                e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jam),
-                e('span', { className: 'num', style: { fontSize: 13, color: '#a9c9a3' } }, '+' + fmt(t.nominal))
-              );
-            })
-          ) : null
+          e(RangeChart, { transaksi: data.transaksi, tipe: 'pemasukan', color: '#7fb37a' })
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'PENGELUARAN AKUMULATIF'),
-          e(IncomeChart, { points: hitungGrafikPengeluaran(data.transaksi), selectedDate: chartDateOut, onSelect: function (d) { setChartDateOut(chartDateOut === d ? null : d); }, color: '#d2766c' }),
-          chartDateOut ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Pengeluaran tanggal ' + chartDateOut),
-            data.transaksi.filter(function (t) { return t.tipe === 'pengeluaran' && t.tanggal === chartDateOut; }).map(function (t) {
-              var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-              return e('div', { className: 'row', key: t.id },
-                e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jam),
-                e('span', { className: 'num', style: { fontSize: 13, color: '#d2766c' } }, '-' + fmt(t.nominal))
-              );
-            })
-          ) : null
+          e(RangeChart, { transaksi: data.transaksi, tipe: 'pengeluaran', color: '#d2766c' })
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'SALDO PER WALLET'),
