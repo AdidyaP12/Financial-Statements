@@ -232,11 +232,148 @@
     );
   }
 
-  function App() {
+  function hitungGrafikPemasukan(transaksi) {
+    var pemasukan = transaksi.filter(function (t) { return t.tipe === 'pemasukan'; });
+    var byDate = {};
+    pemasukan.forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
+    var dates = Object.keys(byDate).sort();
+    var cum = 0;
+    return dates.map(function (d) {
+      cum += byDate[d];
+      return { tanggal: d, harian: byDate[d], kumulatif: cum };
+    });
+  }
+
+  function hitungGrafikPengeluaran(transaksi) {
+    var pengeluaran = transaksi.filter(function (t) { return t.tipe === 'pengeluaran'; });
+    var byDate = {};
+    pengeluaran.forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
+    var dates = Object.keys(byDate).sort();
+    var cum = 0;
+    return dates.map(function (d) {
+      cum += byDate[d];
+      return { tanggal: d, harian: byDate[d], kumulatif: cum };
+    });
+  }
+
+  function hitungGrafikNetHarian(transaksi) {
+    var byDate = {};
+    transaksi.forEach(function (t) {
+      if (t.tipe === 'pemasukan') byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal;
+      else if (t.tipe === 'pengeluaran') byDate[t.tanggal] = (byDate[t.tanggal] || 0) - t.nominal;
+    });
+    var dates = Object.keys(byDate).sort();
+    var cum = 0;
+    return dates.map(function (d) {
+      cum += byDate[d];
+      return { tanggal: d, net: byDate[d], kumulatif: cum };
+    });
+  }
+
+  function IncomeChart(props) {
+    var points = props.points;
+    var selectedDate = props.selectedDate;
+    var onSelect = props.onSelect;
+    var color = props.color || '#c9a15a';
+    if (points.length === 0) {
+      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada data buat ditampilin di grafik.');
+    }
+    var W = 300, H = 110, padL = 4, padR = 4, padT = 10, padB = 4;
+    var maxY = Math.max.apply(null, points.map(function (p) { return p.kumulatif; })) || 1;
+    var n = points.length;
+    var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
+    function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
+    function yAt(v) { return H - padB - (v / maxY) * (H - padT - padB); }
+    var pathStr = points.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
+    var circles = points.map(function (p, i) {
+      var isSel = selectedDate === p.tanggal;
+      return e('circle', {
+        key: p.tanggal, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : 3.2,
+        fill: isSel ? '#e8dcc0' : color, stroke: '#0f151b', strokeWidth: 1,
+        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.tanggal); }
+      });
+    });
+    return e('div', null,
+      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 130, display: 'block' } },
+        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6 }),
+        circles
+      ),
+      e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
+        e('span', null, points[0].tanggal),
+        e('span', null, points[n - 1].tanggal)
+      )
+    );
+  }
+
+  function NetChart(props) {
+    var points = props.points;
+    var selectedDate = props.selectedDate;
+    var onSelect = props.onSelect;
+    var HIJAU = '#7fb37a', MERAH = '#d2766c';
+    if (points.length === 0) {
+      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada data buat ditampilin di grafik.');
+    }
+    var W = 300, H = 130, padL = 4, padR = 4, padT = 12, padB = 14;
+    var n = points.length;
+    var baseline = H - padB - (H - padT - padB) * 0.35;
+    var maxAbsNet = Math.max.apply(null, points.map(function (p) { return Math.abs(p.net); })) || 1;
+    var barBudget = (H - padT - padB) * 0.32;
+    var kumVals = points.map(function (p) { return p.kumulatif; });
+    var minKum = Math.min.apply(null, kumVals.concat([0]));
+    var maxKum = Math.max.apply(null, kumVals.concat([0]));
+    var rangeKum = (maxKum - minKum) || 1;
+    var lineTop = padT, lineBottom = baseline - 6;
+    function yKum(v) { return lineBottom - ((v - minKum) / rangeKum) * (lineBottom - lineTop); }
+    var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
+    function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
+    var barW = Math.max(2, Math.min(10, xStep * 0.5));
+
+    var bars = points.map(function (p, i) {
+      var h = (Math.abs(p.net) / maxAbsNet) * barBudget;
+      var isNeg = p.net < 0;
+      var y = isNeg ? baseline : baseline - h;
+      return e('rect', { key: 'bar' + p.tanggal, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.55 });
+    });
+
+    var segments = [];
+    for (var i = 1; i < n; i++) {
+      var naik = points[i].kumulatif >= points[i - 1].kumulatif;
+      segments.push(e('line', {
+        key: 'seg' + i, x1: xAt(i - 1), y1: yKum(points[i - 1].kumulatif), x2: xAt(i), y2: yKum(points[i].kumulatif),
+        stroke: naik ? HIJAU : MERAH, strokeWidth: 1.8
+      }));
+    }
+    var circles = points.map(function (p, i) {
+      var isSel = selectedDate === p.tanggal;
+      return e('circle', {
+        key: 'c' + p.tanggal, cx: xAt(i), cy: yKum(p.kumulatif), r: isSel ? 5 : 3,
+        fill: isSel ? '#e8dcc0' : (p.net >= 0 ? HIJAU : MERAH), stroke: '#0f151b', strokeWidth: 1,
+        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.tanggal); }
+      });
+    });
+
+    return e('div', null,
+      e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 150, display: 'block' } },
+        e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
+        bars,
+        segments,
+        circles
+      ),
+      e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
+        e('span', null, points[0].tanggal),
+        e('span', null, points[n - 1].tanggal)
+      )
+    );
+  }
+
+
     var dataState = useLocalData(STORAGE_KEY, SEED);
     var data = dataState[0], setData = dataState[1];
     var s_tab = useState('dashboard'); var tab = s_tab[0], setTab = s_tab[1];
     var s_modal = useState(null); var modal = s_modal[0], setModal = s_modal[1];
+    var s_chartDate = useState(null); var chartDate = s_chartDate[0], setChartDate = s_chartDate[1];
+    var s_chartDateOut = useState(null); var chartDateOut = s_chartDateOut[0], setChartDateOut = s_chartDateOut[1];
+    var s_chartDateNet = useState(null); var chartDateNet = s_chartDateNet[0], setChartDateNet = s_chartDateNet[1];
 
     var walletSaldo = useMemo(function () {
       var map = {};
@@ -267,7 +404,7 @@
     var totalUtang = utangDetail.reduce(function (a, u) { return a + u.sisaTagihan; }, 0);
     var kekayaanBersih = totalWallet + totalHarta - totalUtang;
 
-    function addTransaksi(t) { setData(function (d) { return Object.assign({}, d, { transaksi: [Object.assign({ id: 't' + Date.now() }, t)].concat(d.transaksi) }); }); }
+    function addTransaksi(t) { setData(function (d) { return Object.assign({}, d, { transaksi: [Object.assign({ id: 't' + Date.now(), waktuInput: new Date().toISOString() }, t)].concat(d.transaksi) }); }); }
     function addWallet(w) { setData(function (d) { return Object.assign({}, d, { wallets: d.wallets.concat([Object.assign({ id: 'w' + Date.now() }, w)]) }); }); }
     function addHarta(h) { setData(function (d) { return Object.assign({}, d, { harta: d.harta.concat([Object.assign({ id: 'h' + Date.now() }, h)]) }); }); }
     function addUtang(u) { setData(function (d) { return Object.assign({}, d, { utang: d.utang.concat([Object.assign({ id: 'u' + Date.now() }, u)]) }); }); }
@@ -299,6 +436,51 @@
             e('span', null, 'Harta ', e('b', { className: 'num', style: { color: '#a9c9a3' } }, fmt(totalHarta))),
             e('span', null, 'Utang ', e('b', { className: 'num', style: { color: '#d2766c' } }, '-' + fmt(totalUtang)))
           )
+        ),
+        e('div', { className: 'card' },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'TOTAL AKUMULATIF (NET HARIAN)'),
+          e(NetChart, { points: hitungGrafikNetHarian(data.transaksi), selectedDate: chartDateNet, onSelect: function (d) { setChartDateNet(chartDateNet === d ? null : d); } }),
+          chartDateNet ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Semua transaksi tanggal ' + chartDateNet + ' (urut waktu input)'),
+            data.transaksi.filter(function (t) { return t.tanggal === chartDateNet; })
+              .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); })
+              .map(function (t) {
+                var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+                var warna = t.tipe === 'pemasukan' ? '#a9c9a3' : t.tipe === 'pengeluaran' ? '#d2766c' : '#8fb3c9';
+                return e('div', { className: 'row', key: t.id },
+                  e('span', { style: { fontSize: 13 } }, jam + ' \u00b7 ' + (t.jenis || 'Transfer') + (t.kategori ? ' \u00b7 ' + t.kategori : '')),
+                  e('span', { className: 'num', style: { fontSize: 13, color: warna } }, (t.tipe === 'pengeluaran' ? '-' : t.tipe === 'pemasukan' ? '+' : '') + fmt(t.nominal))
+                );
+              })
+          ) : null
+        ),
+        e('div', { className: 'card' },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'PEMASUKAN AKUMULATIF'),
+          e(IncomeChart, { points: hitungGrafikPemasukan(data.transaksi), selectedDate: chartDate, onSelect: function (d) { setChartDate(chartDate === d ? null : d); }, color: '#7fb37a' }),
+          chartDate ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Pemasukan tanggal ' + chartDate),
+            data.transaksi.filter(function (t) { return t.tipe === 'pemasukan' && t.tanggal === chartDate; }).map(function (t) {
+              var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+              return e('div', { className: 'row', key: t.id },
+                e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jam),
+                e('span', { className: 'num', style: { fontSize: 13, color: '#a9c9a3' } }, '+' + fmt(t.nominal))
+              );
+            })
+          ) : null
+        ),
+        e('div', { className: 'card' },
+          e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'PENGELUARAN AKUMULATIF'),
+          e(IncomeChart, { points: hitungGrafikPengeluaran(data.transaksi), selectedDate: chartDateOut, onSelect: function (d) { setChartDateOut(chartDateOut === d ? null : d); }, color: '#d2766c' }),
+          chartDateOut ? e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+            e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Pengeluaran tanggal ' + chartDateOut),
+            data.transaksi.filter(function (t) { return t.tipe === 'pengeluaran' && t.tanggal === chartDateOut; }).map(function (t) {
+              var jam = t.waktuInput ? new Date(t.waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+              return e('div', { className: 'row', key: t.id },
+                e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '') + ' \u00b7 ' + jam),
+                e('span', { className: 'num', style: { fontSize: 13, color: '#d2766c' } }, '-' + fmt(t.nominal))
+              );
+            })
+          ) : null
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'SALDO PER WALLET'),
