@@ -1,4 +1,4 @@
-const CACHE_NAME = 'buku-kas-v1';
+const CACHE_NAME = 'financial-statements-v2';
 const FILES_TO_CACHE = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (event) {
@@ -19,10 +19,18 @@ self.addEventListener('activate', function (event) {
   self.clients.claim();
 });
 
+// Network-first: selalu coba ambil versi terbaru dari internet dulu.
+// Baru pakai cache kalau beneran offline/gak ada koneksi.
 self.addEventListener('fetch', function (event) {
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      return cached || fetch(event.request);
-    })
+    fetch(event.request)
+      .then(function (response) {
+        var copy = response.clone();
+        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+        return response;
+      })
+      .catch(function () {
+        return caches.match(event.request);
+      })
   );
 });
