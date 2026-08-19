@@ -314,16 +314,111 @@
     });
   }
 
-  function RangeSelector(props) {
-    var opts = [['hari', 'Hari Ini'], ['minggu', '1 Minggu'], ['bulan', '1 Bulan']];
-    return e('div', { style: { display: 'flex', gap: 6, marginBottom: 10 } },
-      opts.map(function (o) {
-        var active = props.value === o[0];
-        return e('button', {
-          key: o[0], onClick: function () { props.onChange(o[0]); },
-          style: { fontSize: 10.5, padding: '4px 9px', borderRadius: 6, border: '1px solid ' + (active ? '#c9a15a' : '#2c3644'), background: active ? '#2a2313' : 'transparent', color: active ? '#e8dcc0' : '#7d8794', cursor: 'pointer', fontFamily: 'inherit' }
-        }, o[1]);
-      })
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function toISODate(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function lastOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+  function daysBetweenISO(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+  function enumerateDates(startISO, endISO) {
+    var arr = []; var d = new Date(startISO + 'T00:00:00'); var end = new Date(endISO + 'T00:00:00');
+    while (d <= end) { arr.push(toISODate(d)); d.setDate(d.getDate() + 1); }
+    return arr;
+  }
+  function jamDari(waktuInput) {
+    return waktuInput ? new Date(waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+  }
+  var BULAN_PENDEK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  function formatTglPendek(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return d.getDate() + ' ' + BULAN_PENDEK[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+  }
+  function defaultBulanIni() {
+    var now = new Date();
+    return { start: toISODate(firstOfMonth(now)), end: toISODate(lastOfMonth(now)) };
+  }
+
+  function buildDailySeries(transaksi, tipe, startISO, endISO) {
+    var dates = enumerateDates(startISO, endISO);
+    var byDate = {};
+    transaksi.filter(function (t) { return t.tipe === tipe; }).forEach(function (t) { byDate[t.tanggal] = (byDate[t.tanggal] || 0) + t.nominal; });
+    var cum = 0;
+    return dates.map(function (d) {
+      var harian = byDate[d] || 0;
+      cum += harian;
+      return { tanggal: d, harian: harian, kumulatif: cum };
+    });
+  }
+
+  function buildIntradayPoints(transaksi, tipe, dateISO) {
+    var todays = transaksi.filter(function (t) { return t.tipe === tipe && t.tanggal === dateISO; })
+      .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); });
+    var cum = 0;
+    return todays.map(function (t) {
+      cum += t.nominal;
+      return { id: t.id, waktuInput: t.waktuInput, nominal: t.nominal, kumulatif: cum, jenis: t.jenis, kategori: t.kategori };
+    });
+  }
+
+  function smoothPathD(pts) {
+    if (pts.length < 2) return '';
+    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    var d = 'M' + xs[0].toFixed(1) + ',' + ys[0].toFixed(1);
+    for (var i = 0; i < xs.length - 1; i++) {
+      var x0 = i > 0 ? xs[i - 1] : xs[i], y0 = i > 0 ? ys[i - 1] : ys[i];
+      var x1 = xs[i], y1 = ys[i];
+      var x2 = xs[i + 1], y2 = ys[i + 1];
+      var x3 = i + 2 < xs.length ? xs[i + 2] : x2, y3 = i + 2 < xs.length ? ys[i + 2] : y2;
+      var c1x = x1 + (x2 - x0) / 6, c1y = y1 + (y2 - y0) / 6;
+      var c2x = x2 - (x3 - x1) / 6, c2y = y2 - (y3 - y1) / 6;
+      d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1);
+    }
+    return d;
+  }
+  function areaPathD(lineD, xs, baseY) {
+    if (!lineD) return '';
+    return lineD + ' L' + xs[xs.length - 1].toFixed(1) + ',' + baseY.toFixed(1) + ' L' + xs[0].toFixed(1) + ',' + baseY.toFixed(1) + ' Z';
+  }
+  function gradId(color) { return 'grad' + color.replace('#', ''); }
+  function AreaGradient(props) {
+    var id = gradId(props.color);
+    return e('defs', null, e('linearGradient', { id: id, x1: '0', y1: '0', x2: '0', y2: '1' },
+      e('stop', { offset: '0%', stopColor: props.color, stopOpacity: 0.35 }),
+      e('stop', { offset: '100%', stopColor: props.color, stopOpacity: 0 })
+    ));
+  }
+
+  function CalendarIcon() {
+    return e('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none' },
+      e('rect', { x: 3, y: 5, width: 18, height: 16, rx: 2, stroke: 'currentColor', strokeWidth: 1.8 }),
+      e('path', { d: 'M3 10h18M8 3v4M16 3v4', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' })
+    );
+  }
+
+  function DateRangePicker(props) {
+    var start = props.start, end = props.end, onChange = props.onChange, accent = props.accent || '#7fb37a';
+    var s_open = useState(false); var open = s_open[0], setOpen = s_open[1];
+    var isSingle = start === end;
+    function shiftDay(delta) {
+      var d = new Date(start + 'T00:00:00'); d.setDate(d.getDate() + delta);
+      var iso = toISODate(d);
+      onChange(iso, iso);
+    }
+    var label = isSingle ? formatTglPendek(start) : (formatTglPendek(start) + ' - ' + formatTglPendek(end));
+    var pill = e('button', {
+      onClick: function () { setOpen(!open); },
+      style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid #2c3644', borderRadius: 20, padding: '5px 12px', color: accent, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }
+    }, label, e(CalendarIcon, null));
+    var arrows = isSingle ? [
+      e('button', { key: 'prev', onClick: function () { shiftDay(-1); }, style: { background: 'none', border: 'none', color: '#7d8794', cursor: 'pointer', fontSize: 17, padding: '0 6px' } }, '\u2039'),
+      e('button', { key: 'next', onClick: function () { shiftDay(1); }, style: { background: 'none', border: 'none', color: '#7d8794', cursor: 'pointer', fontSize: 17, padding: '0 6px' } }, '\u203a')
+    ] : null;
+    return e('div', { style: { marginBottom: 10 } },
+      e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, isSingle ? arrows[0] : null, pill, isSingle ? arrows[1] : null),
+      open ? e('div', { style: { display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' } },
+        e('input', { type: 'date', value: start, onChange: function (ev) { onChange(ev.target.value, ev.target.value > end ? ev.target.value : end); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) }),
+        e('span', { style: { color: '#5f6a78', fontSize: 12 } }, '\u2013'),
+        e('input', { type: 'date', value: end, onChange: function (ev) { onChange(ev.target.value < start ? ev.target.value : start, ev.target.value); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) })
+      ) : null
     );
   }
 
@@ -344,28 +439,32 @@
     function yAt(v) { return H - padB - ((v - minKum) / rangeKum) * (H - padT - padB); }
     var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
     function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
-    var pathStr = series.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
+    var xyPts = series.map(function (p, i) { return [xAt(i), yAt(p.kumulatif)]; });
+    var lineD = smoothPathD(xyPts);
+    var areaD = areaPathD(lineD, xyPts.map(function (p) { return p[0]; }), H - padB);
     var maxHarianIdx = 0;
     series.forEach(function (p, i) { if (p.harian > series[maxHarianIdx].harian) maxHarianIdx = i; });
     var puncakAda = series[maxHarianIdx].harian > 0;
-    var circles = series.map(function (p, i) {
-      var isSel = selected === p.tanggal;
-      var isPuncak = puncakAda && i === maxHarianIdx;
-      return e('circle', {
-        key: p.tanggal, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : isPuncak ? 4.2 : 2.4,
-        fill: isSel ? '#e8dcc0' : color, stroke: '#0f151b', strokeWidth: 1,
-        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.tanggal); }
-      });
+    var hitTargets = series.map(function (p, i) {
+      return e('circle', { key: 'hit' + p.tanggal, cx: xAt(i), cy: yAt(p.kumulatif), r: 9, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { onSelect(p.tanggal); } });
     });
+    var markDots = [];
+    if (puncakAda) markDots.push(e('circle', { key: 'peak', cx: xAt(maxHarianIdx), cy: yAt(series[maxHarianIdx].kumulatif), r: 4, fill: color, stroke: '#0f151b', strokeWidth: 1 }));
+    if (selected) {
+      var si = series.map(function (p) { return p.tanggal; }).indexOf(selected);
+      if (si >= 0) markDots.push(e('circle', { key: 'sel', cx: xAt(si), cy: yAt(series[si].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
+    }
     var label = puncakAda ? e('text', {
       x: xAt(maxHarianIdx), y: Math.max(10, yAt(series[maxHarianIdx].kumulatif) - 9), fill: color,
       fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
     }, shortFmt(series[maxHarianIdx].harian)) : null;
     return e('div', null,
       e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 138, display: 'block' } },
+        e(AreaGradient, { color: color }),
         e('line', { x1: padL, y1: yAt(0), x2: W - padR, y2: yAt(0), stroke: '#232c37', strokeWidth: 1 }),
-        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6, opacity: ada ? 1 : 0.35 }),
-        circles, label
+        e('path', { d: areaD, fill: 'url(#' + gradId(color) + ')', stroke: 'none', opacity: ada ? 1 : 0.3 }),
+        e('path', { d: lineD, fill: 'none', stroke: color, strokeWidth: 1.8, opacity: ada ? 1 : 0.35 }),
+        markDots, label, hitTargets
       ),
       e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
         e('span', null, series[0].tanggal),
@@ -375,9 +474,9 @@
   }
 
   function IntradayChart(props) {
-    var points = props.points, color = props.color, selectedId = props.selectedId, onSelect = props.onSelect;
+    var points = props.points, color = props.color, selectedId = props.selectedId, onSelect = props.onSelect, dateISO = props.dateISO;
     if (points.length === 0) {
-      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi hari ini.');
+      return e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
     }
     var W = 300, H = 120, padL = 6, padR = 6, padT = 20, padB = 16;
     var n = points.length;
@@ -387,42 +486,45 @@
     function yAt(v) { return H - padB - ((v - minKum) / rangeKum) * (H - padT - padB); }
     var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
     function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
-    var pathStr = points.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.kumulatif).toFixed(1); }).join(' ');
+    var xyPts = points.map(function (p, i) { return [xAt(i), yAt(p.kumulatif)]; });
+    var lineD = smoothPathD(xyPts);
+    var areaD = areaPathD(lineD, xyPts.map(function (p) { return p[0]; }), H - padB);
     var maxIdx = 0;
     points.forEach(function (p, i) { if (p.nominal > points[maxIdx].nominal) maxIdx = i; });
-    var circles = points.map(function (p, i) {
-      var isSel = selectedId === p.id;
-      var isPuncak = i === maxIdx;
-      return e('circle', {
-        key: p.id, cx: xAt(i), cy: yAt(p.kumulatif), r: isSel ? 5 : isPuncak ? 4.2 : 2.8,
-        fill: isSel ? '#e8dcc0' : color, stroke: '#0f151b', strokeWidth: 1,
-        style: { cursor: 'pointer' }, onClick: function () { onSelect(p.id); }
-      });
+    var hitTargets = points.map(function (p, i) {
+      return e('circle', { key: 'hit' + p.id, cx: xAt(i), cy: yAt(p.kumulatif), r: 9, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { onSelect(p.id); } });
     });
+    var markDots = [e('circle', { key: 'peak', cx: xAt(maxIdx), cy: yAt(points[maxIdx].kumulatif), r: 4, fill: color, stroke: '#0f151b', strokeWidth: 1 })];
+    if (selectedId) {
+      var si = points.map(function (p) { return p.id; }).indexOf(selectedId);
+      if (si >= 0) markDots.push(e('circle', { key: 'sel', cx: xAt(si), cy: yAt(points[si].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
+    }
     var label = e('text', {
       x: xAt(maxIdx), y: Math.max(10, yAt(points[maxIdx].kumulatif) - 9), fill: color,
       fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
     }, shortFmt(points[maxIdx].nominal));
     return e('div', null,
       e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 138, display: 'block' } },
-        e('path', { d: pathStr, fill: 'none', stroke: color, strokeWidth: 1.6 }),
-        circles, label
+        e(AreaGradient, { color: color }),
+        e('path', { d: areaD, fill: 'url(#' + gradId(color) + ')', stroke: 'none' }),
+        e('path', { d: lineD, fill: 'none', stroke: color, strokeWidth: 1.8 }),
+        markDots, label, hitTargets
       ),
-      e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, toISODate(new Date()))
+      e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, dateISO)
     );
   }
 
   function RangeChart(props) {
     var tipe = props.tipe, color = props.color, transaksi = props.transaksi;
-    var s_range = useState('bulan'); var range = s_range[0], setRange = s_range[1];
+    var s_range = useState(defaultBulanIni); var range = s_range[0], setRange = s_range[1];
     var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
     var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
-    var isHari = range === 'hari';
+    var isHari = range.start === range.end;
 
     var chartEl, drillEl = null;
     if (isHari) {
-      var pts = buildIntradayPoints(transaksi, tipe);
-      chartEl = e(IntradayChart, { points: pts, color: color, selectedId: selId, onSelect: function (id) { setSelId(selId === id ? null : id); } });
+      var pts = buildIntradayPoints(transaksi, tipe, range.start);
+      chartEl = e(IntradayChart, { points: pts, color: color, selectedId: selId, dateISO: range.start, onSelect: function (id) { setSelId(selId === id ? null : id); } });
       if (selId) {
         var p = pts.filter(function (x) { return x.id === selId; })[0];
         if (p) drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
@@ -431,7 +533,7 @@
         );
       }
     } else {
-      var series = buildDailySeries(transaksi, tipe, range);
+      var series = buildDailySeries(transaksi, tipe, range.start, range.end);
       chartEl = e(DailyLineChart, { series: series, color: color, selected: selDate, onSelect: function (d) { setSelDate(selDate === d ? null : d); } });
       if (selDate) {
         var items = transaksi.filter(function (t) { return t.tipe === tipe && t.tanggal === selDate; });
@@ -448,26 +550,26 @@
     }
 
     return e('div', null,
-      e(RangeSelector, { value: range, onChange: function (r) { setRange(r); setSelDate(null); setSelId(null); } }),
+      e(DateRangePicker, { start: range.start, end: range.end, accent: color, onChange: function (s, en) { setRange({ start: s, end: en }); setSelDate(null); setSelId(null); } }),
       chartEl, drillEl
     );
   }
 
   function NetRangeChart(props) {
-    var transaksi = props.transaksi;
+    var transaksi = props.transaksi, saldoNow = props.saldoNow;
     var HIJAU = '#7fb37a', MERAH = '#d2766c';
-    var s_range = useState('bulan'); var range = s_range[0], setRange = s_range[1];
+    var s_range = useState(defaultBulanIni); var range = s_range[0], setRange = s_range[1];
     var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
     var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
+    var lebar = daysBetweenISO(range.start, range.end);
 
     var chartEl, drillEl = null;
 
-    if (range === 'hari') {
-      var todayStr = toISODate(new Date());
-      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === todayStr; })
+    if (lebar === 0) {
+      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === range.start; })
         .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); });
       if (todays.length === 0) {
-        chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi hari ini.');
+        chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
       } else {
         var W = 300, H = 130, padL = 6, padR = 6, padT = 16, padB = 16;
         var n = todays.length;
@@ -481,14 +583,14 @@
           var h = (t.nominal / maxAbs) * (baseline - padT);
           var y = isNeg ? baseline : baseline - h;
           var isSel = selId === t.id;
-          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: isSel ? 1 : 0.6, style: { cursor: 'pointer' }, onClick: function () { setSelId(selId === t.id ? null : t.id); } });
+          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isSel ? 1 : 0.65, style: { cursor: 'pointer' }, onClick: function () { setSelId(selId === t.id ? null : t.id); } });
         });
         chartEl = e('div', null,
           e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block' } },
             e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
             bars
           ),
-          e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, todayStr)
+          e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, range.start)
         );
         if (selId) {
           var t2 = todays.filter(function (x) { return x.id === selId; })[0];
@@ -498,9 +600,8 @@
           );
         }
       }
-    } else if (range === 'minggu') {
-      var rs = rangeStartEnd('minggu');
-      var dates = enumerateDates(rs.start, rs.end);
+    } else if (lebar <= 7) {
+      var dates = enumerateDates(range.start, range.end);
       var byDateIn = {}, byDateOut = {};
       transaksi.forEach(function (t) {
         if (t.tipe === 'pemasukan') byDateIn[t.tanggal] = Math.max(byDateIn[t.tanggal] || 0, t.nominal);
@@ -512,15 +613,24 @@
       var n2 = dates.length;
       var xStep2 = n2 > 1 ? (W2 - padL2 - padR2) / (n2 - 1) : 0;
       function xAt2(i) { return n2 > 1 ? padL2 + i * xStep2 : W2 / 2; }
-      var pathIn = dates.map(function (d, i) { return (i === 0 ? 'M' : 'L') + xAt2(i).toFixed(1) + ',' + yAt2(byDateIn[d] || 0).toFixed(1); }).join(' ');
-      var pathOut = dates.map(function (d, i) { return (i === 0 ? 'M' : 'L') + xAt2(i).toFixed(1) + ',' + yAt2(byDateOut[d] || 0).toFixed(1); }).join(' ');
-      var dotsIn = dates.map(function (d, i) { return e('circle', { key: 'in' + d, cx: xAt2(i), cy: yAt2(byDateIn[d] || 0), r: selDate === d ? 5 : 2.6, fill: HIJAU, stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
-      var dotsOut = dates.map(function (d, i) { return e('circle', { key: 'out' + d, cx: xAt2(i), cy: yAt2(byDateOut[d] || 0), r: selDate === d ? 5 : 2.6, fill: MERAH, stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
+      var ptsIn = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateIn[d] || 0)]; });
+      var ptsOut = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateOut[d] || 0)]; });
+      var pathIn = smoothPathD(ptsIn), pathOut = smoothPathD(ptsOut);
+      var dotsIn = dates.map(function (d, i) { return e('circle', { key: 'hin' + d, cx: xAt2(i), cy: yAt2(byDateIn[d] || 0), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
+      var dotsOut = dates.map(function (d, i) { return e('circle', { key: 'hout' + d, cx: xAt2(i), cy: yAt2(byDateOut[d] || 0), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
+      var selMarks = [];
+      if (selDate) {
+        var si2 = dates.indexOf(selDate);
+        if (si2 >= 0) {
+          selMarks.push(e('circle', { key: 's1', cx: xAt2(si2), cy: yAt2(byDateIn[selDate] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
+          selMarks.push(e('circle', { key: 's2', cx: xAt2(si2), cy: yAt2(byDateOut[selDate] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
+        }
+      }
       chartEl = e('div', null,
         e('svg', { viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block' } },
-          e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.6 }),
-          e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.6 }),
-          dotsIn, dotsOut
+          e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
+          e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
+          selMarks, dotsIn, dotsOut
         ),
         e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
           e('span', null, dates[0]), e('span', null, dates[n2 - 1])
@@ -540,8 +650,7 @@
         );
       }
     } else {
-      var rs3 = rangeStartEnd('bulan');
-      var dates3 = enumerateDates(rs3.start, rs3.end);
+      var dates3 = enumerateDates(range.start, range.end);
       var byDateNet = {};
       transaksi.forEach(function (t) {
         if (t.tipe === 'pemasukan') byDateNet[t.tanggal] = (byDateNet[t.tanggal] || 0) + t.nominal;
@@ -567,21 +676,24 @@
         var h = (Math.abs(p.net) / maxAbsNet) * barBudget;
         var isNeg = p.net < 0;
         var y = isNeg ? baseline3 : baseline3 - h;
-        return e('rect', { key: 'bar' + p.tanggal, x: xAt3(i) - barW3 / 2, y: y, width: barW3, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.55 });
+        return e('rect', { key: 'bar' + p.tanggal, x: xAt3(i) - barW3 / 2, y: y, width: barW3, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.5 });
       });
-      var segments3 = [];
-      for (var i3 = 1; i3 < n3; i3++) {
-        var naik = points3[i3].kumulatif >= points3[i3 - 1].kumulatif;
-        segments3.push(e('line', { key: 'seg' + i3, x1: xAt3(i3 - 1), y1: yKum3(points3[i3 - 1].kumulatif), x2: xAt3(i3), y2: yKum3(points3[i3].kumulatif), stroke: naik ? HIJAU : MERAH, strokeWidth: 1.8 }));
+      var xyKum3 = points3.map(function (p, i) { return [xAt3(i), yKum3(p.kumulatif)]; });
+      var lineD3 = smoothPathD(xyKum3);
+      var hitTargets3 = points3.map(function (p, i) {
+        return e('circle', { key: 'hc' + p.tanggal, cx: xAt3(i), cy: yKum3(p.kumulatif), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === p.tanggal ? null : p.tanggal); } });
+      });
+      var selMark3 = null;
+      if (selDate) {
+        var si3 = points3.map(function (p) { return p.tanggal; }).indexOf(selDate);
+        if (si3 >= 0) selMark3 = e('circle', { key: 'sel3', cx: xAt3(si3), cy: yKum3(points3[si3].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 });
       }
-      var circles3 = points3.map(function (p, i) {
-        var isSel = selDate === p.tanggal;
-        return e('circle', { key: 'c' + p.tanggal, cx: xAt3(i), cy: yKum3(p.kumulatif), r: isSel ? 5 : 3, fill: isSel ? '#e8dcc0' : (p.net >= 0 ? HIJAU : MERAH), stroke: '#0f151b', strokeWidth: 1, style: { cursor: 'pointer' }, onClick: function () { setSelDate(selDate === p.tanggal ? null : p.tanggal); } });
-      });
       chartEl = e('div', null,
         e('svg', { viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block' } },
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
-          bars3, segments3, circles3
+          bars3,
+          e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
+          selMark3, hitTargets3
         ),
         e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
           e('span', null, points3[0].tanggal), e('span', null, points3[n3 - 1].tanggal)
@@ -596,7 +708,8 @@
     }
 
     return e('div', null,
-      e(RangeSelector, { value: range, onChange: function (r) { setRange(r); setSelDate(null); setSelId(null); } }),
+      e('div', { className: 'num', style: { fontSize: 20, color: '#e8dcc0', fontWeight: 700, marginBottom: 8 } }, fmt(saldoNow)),
+      e(DateRangePicker, { start: range.start, end: range.end, accent: '#c9a15a', onChange: function (s, en) { setRange({ start: s, end: en }); setSelDate(null); setSelId(null); } }),
       chartEl, drillEl
     );
   }
@@ -672,7 +785,7 @@
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'TOTAL AKUMULATIF'),
-          e(NetRangeChart, { transaksi: data.transaksi })
+          e(NetRangeChart, { transaksi: data.transaksi, saldoNow: totalWallet })
         ),
         e('div', { className: 'card' },
           e('div', { style: { fontSize: 12, color: '#8b95a3', marginBottom: 10 } }, 'PEMASUKAN AKUMULATIF'),
