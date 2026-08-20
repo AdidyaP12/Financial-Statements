@@ -560,31 +560,29 @@
     var transaksi = props.transaksi, saldoNow = props.saldoNow;
     var HIJAU = '#7fb37a', MERAH = '#d2766c';
     var s_range = useState(defaultBulanIni); var range = s_range[0], setRange = s_range[1];
-    var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
-    var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
-    var s_scrub = useState(null); var scrub = s_scrub[0], setScrub = s_scrub[1];
+    var s_active = useState(null); var active = s_active[0], setActive = s_active[1];
     var lebar = daysBetweenISO(range.start, range.end);
     var svgRef = useRef(null);
 
-    function scrubHandlers(W, xToValue) {
-      function posToVal(clientX) {
+    function makeHandlers(W, xToIndex) {
+      function posToIdx(clientX) {
         if (!svgRef.current) return null;
         var rect = svgRef.current.getBoundingClientRect();
+        if (!rect.width) return null;
         var ratio = W / rect.width;
         var svgX = (clientX - rect.left) * ratio;
-        return xToValue(svgX);
+        return xToIndex(svgX);
       }
       return {
-        onPointerDown: function (ev) { var v = posToVal(ev.clientX); if (v !== null) setScrub(v); },
-        onPointerMove: function (ev) { if (ev.buttons !== 1 && ev.pointerType !== 'touch') return; var v = posToVal(ev.clientX); if (v !== null) setScrub(v); },
-        onPointerUp: function () { setScrub(null); },
-        onPointerLeave: function () { setScrub(null); },
-        onPointerCancel: function () { setScrub(null); }
+        onPointerDown: function (ev) { var i = posToIdx(ev.clientX); if (i !== null) setActive(i); },
+        onPointerMove: function (ev) { if (ev.buttons !== 1) return; var i = posToIdx(ev.clientX); if (i !== null) setActive(i); },
+        onPointerUp: function () { setActive(null); },
+        onPointerLeave: function () { setActive(null); },
+        onPointerCancel: function () { setActive(null); }
       };
     }
 
-    var displayNominal = scrub !== null ? scrub : saldoNow;
-    var chartEl, drillEl = null;
+    var chartEl, drillEl = null, displayNominal = saldoNow;
 
     if (lebar === 0) {
       var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === range.start; })
@@ -599,32 +597,34 @@
         var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
         function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
         var barW = Math.max(3, Math.min(14, xStep * 0.5));
+        var activeIdx = active !== null ? todays.map(function (t) { return t.id; }).indexOf(active) : -1;
         var bars = todays.map(function (t, i) {
           var isNeg = t.tipe === 'pengeluaran';
           var h = (t.nominal / maxAbs) * (baseline - padT);
           var y = isNeg ? baseline : baseline - h;
-          var isSel = selId === t.id;
-          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isSel ? 1 : 0.65, style: { cursor: 'pointer' }, onClick: function () { setSelId(selId === t.id ? null : t.id); } });
+          var isActive = i === activeIdx;
+          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.6 });
         });
-        var xToVal = function (svgX) {
+        var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+        var xToIdx = function (svgX) {
           var idx = n > 1 ? Math.round((svgX - padL) / xStep) : 0;
-          idx = Math.max(0, Math.min(n - 1, idx));
-          var t = todays[idx];
-          return t.tipe === 'pengeluaran' ? -t.nominal : t.nominal;
+          return Math.max(0, Math.min(n - 1, idx));
         };
-        var handlers = scrubHandlers(W, xToVal);
+        var handlers = makeHandlers(W, function (svgX) { return todays[xToIdx(svgX)].id; });
         chartEl = e('div', null,
           e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none' } }, handlers),
             e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
-            bars
+            bars, crosshair
           )
         );
-        if (selId) {
-          var t2 = todays.filter(function (x) { return x.id === selId; })[0];
-          if (t2) drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
+        if (activeIdx >= 0) {
+          var t2 = todays[activeIdx];
+          displayNominal = saldoNow;
+          drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
             jamDari(t2.waktuInput) + ' \u00b7 ' + t2.jenis + (t2.kategori ? ' \u00b7 ' + t2.kategori : '') + ' \u2014 ',
             e('span', { className: 'num', style: { color: t2.tipe === 'pengeluaran' ? MERAH : HIJAU } }, (t2.tipe === 'pengeluaran' ? '-' : '+') + fmt(t2.nominal))
           );
+          displayNominal = t2.tipe === 'pengeluaran' ? -t2.nominal : t2.nominal;
         }
       }
     } else if (lebar <= 7) {
@@ -643,35 +643,31 @@
       var ptsIn = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateIn[d] || 0)]; });
       var ptsOut = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateOut[d] || 0)]; });
       var pathIn = smoothPathD(ptsIn), pathOut = smoothPathD(ptsOut);
-      var dotsIn = dates.map(function (d, i) { return e('circle', { key: 'hin' + d, cx: xAt2(i), cy: yAt2(byDateIn[d] || 0), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
-      var dotsOut = dates.map(function (d, i) { return e('circle', { key: 'hout' + d, cx: xAt2(i), cy: yAt2(byDateOut[d] || 0), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === d ? null : d); } }); });
-      var selMarks = [];
-      if (selDate) {
-        var si2 = dates.indexOf(selDate);
-        if (si2 >= 0) {
-          selMarks.push(e('circle', { key: 's1', cx: xAt2(si2), cy: yAt2(byDateIn[selDate] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
-          selMarks.push(e('circle', { key: 's2', cx: xAt2(si2), cy: yAt2(byDateOut[selDate] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
-        }
+      var activeIdx2 = active !== null ? dates.indexOf(active) : -1;
+      var marks2 = [];
+      if (activeIdx2 >= 0) {
+        marks2.push(e('circle', { key: 's1', cx: xAt2(activeIdx2), cy: yAt2(byDateIn[active] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
+        marks2.push(e('circle', { key: 's2', cx: xAt2(activeIdx2), cy: yAt2(byDateOut[active] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
       }
-      var xToVal2 = function (svgX) {
+      var crosshair2 = activeIdx2 >= 0 ? e('line', { x1: xAt2(activeIdx2), y1: padT2 - 6, x2: xAt2(activeIdx2), y2: H2 - padB2, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+      var xToIdx2 = function (svgX) {
         var idx = n2 > 1 ? Math.round((svgX - padL2) / xStep2) : 0;
-        idx = Math.max(0, Math.min(n2 - 1, idx));
-        var d = dates[idx];
-        var vIn = byDateIn[d] || 0, vOut = byDateOut[d] || 0;
-        return vIn >= vOut ? vIn : -vOut;
+        return Math.max(0, Math.min(n2 - 1, idx));
       };
-      var handlers2 = scrubHandlers(W2, xToVal2);
+      var handlers2 = makeHandlers(W2, function (svgX) { return dates[xToIdx2(svgX)]; });
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
-          selMarks, dotsIn, dotsOut
+          crosshair2, marks2
         )
       );
-      if (selDate) {
-        var items2 = transaksi.filter(function (t) { return t.tanggal === selDate && (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran'); });
+      if (activeIdx2 >= 0) {
+        var vIn = byDateIn[active] || 0, vOut = byDateOut[active] || 0;
+        displayNominal = vIn - vOut;
+        var items2 = transaksi.filter(function (t) { return t.tanggal === active && (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran'); });
         drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, 'Tanggal ' + selDate + ' (pemasukan tertinggi ' + fmt(byDateIn[selDate] || 0) + ', pengeluaran tertinggi ' + fmt(byDateOut[selDate] || 0) + ')'),
+          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, active + ' (pemasukan tertinggi ' + fmt(vIn) + ', pengeluaran tertinggi ' + fmt(vOut) + ')'),
           items2.map(function (t) {
             var c = t.tipe === 'pemasukan' ? HIJAU : MERAH;
             return e('div', { className: 'row', key: t.id },
@@ -712,14 +708,9 @@
       });
       var xyKum3 = points3.map(function (p, i) { return [xAt3(i), yKum3(p.kumulatif)]; });
       var lineD3 = smoothPathD(xyKum3);
-      var hitTargets3 = points3.map(function (p, i) {
-        return e('circle', { key: 'hc' + p.tanggal, cx: xAt3(i), cy: yKum3(p.kumulatif), r: 8, fill: 'transparent', style: { cursor: 'pointer', pointerEvents: 'all' }, onClick: function () { setSelDate(selDate === p.tanggal ? null : p.tanggal); } });
-      });
-      var selMark3 = null;
-      if (selDate) {
-        var si3 = points3.map(function (p) { return p.tanggal; }).indexOf(selDate);
-        if (si3 >= 0) selMark3 = e('circle', { key: 'sel3', cx: xAt3(si3), cy: yKum3(points3[si3].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 });
-      }
+      var activeIdx3 = active !== null ? points3.map(function (p) { return p.tanggal; }).indexOf(active) : -1;
+      var mark3 = activeIdx3 >= 0 ? e('circle', { key: 'sel3', cx: xAt3(activeIdx3), cy: yKum3(points3[activeIdx3].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+      var crosshair3 = activeIdx3 >= 0 ? e('line', { x1: xAt3(activeIdx3), y1: padT3 - 6, x2: xAt3(activeIdx3), y2: H3 - padB3, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
       var maxNetIdx = 0, minNetIdx = 0;
       points3.forEach(function (p, i) {
         if (p.net > points3[maxNetIdx].net) maxNetIdx = i;
@@ -734,31 +725,31 @@
         key: 'lblmin', x: xAt3(minNetIdx), y: Math.min(H3 - 4, yKum3(points3[minNetIdx].kumulatif) + 13), fill: MERAH,
         fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
       }, shortFmt(points3[minNetIdx].net)));
-      var xToVal3 = function (svgX) {
+      var xToIdx3 = function (svgX) {
         var idx = n3 > 1 ? Math.round((svgX - padL3) / xStep3) : 0;
-        idx = Math.max(0, Math.min(n3 - 1, idx));
-        return points3[idx].kumulatif;
+        return Math.max(0, Math.min(n3 - 1, idx));
       };
-      var handlers3 = scrubHandlers(W3, xToVal3);
+      var handlers3 = makeHandlers(W3, function (svgX) { return points3[xToIdx3(svgX)].tanggal; });
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none' } }, handlers3),
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          selMark3, netLabels, hitTargets3
+          crosshair3, mark3, netLabels
         )
       );
-      if (selDate) {
-        var pSel = points3.filter(function (p) { return p.tanggal === selDate; })[0];
+      if (activeIdx3 >= 0) {
+        var pSel = points3[activeIdx3];
+        displayNominal = pSel.kumulatif;
         drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-          e('div', { style: { fontSize: 13 } }, selDate + ' \u2014 Net ', e('span', { className: 'num', style: { color: pSel && pSel.net >= 0 ? HIJAU : MERAH } }, fmt(pSel ? pSel.net : 0)))
+          e('div', { style: { fontSize: 13 } }, pSel.tanggal + ' \u2014 Net ', e('span', { className: 'num', style: { color: pSel.net >= 0 ? HIJAU : MERAH } }, fmt(pSel.net)))
         );
       }
     }
 
     return e('div', null,
-      e('div', { className: 'num', style: { fontSize: 20, color: scrub !== null ? '#c9a15a' : '#e8dcc0', fontWeight: 700, marginBottom: 8 } }, fmt(displayNominal)),
-      e(DateRangePicker, { start: range.start, end: range.end, accent: '#c9a15a', onChange: function (s, en) { setRange({ start: s, end: en }); setSelDate(null); setSelId(null); } }),
+      e('div', { className: 'num', style: { fontSize: 20, color: active !== null ? '#c9a15a' : '#e8dcc0', fontWeight: 700, marginBottom: 8 } }, fmt(displayNominal)),
+      e(DateRangePicker, { start: range.start, end: range.end, accent: '#c9a15a', onChange: function (s, en) { setRange({ start: s, end: en }); setActive(null); } }),
       chartEl, drillEl
     );
   }
