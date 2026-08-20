@@ -36,6 +36,7 @@
   var useState = React.useState;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
+  var useRef = React.useRef;
 
   function fmt(n) { return 'Rp' + Math.round(n || 0).toLocaleString('id-ID'); }
   function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -561,8 +562,28 @@
     var s_range = useState(defaultBulanIni); var range = s_range[0], setRange = s_range[1];
     var s_selDate = useState(null); var selDate = s_selDate[0], setSelDate = s_selDate[1];
     var s_selId = useState(null); var selId = s_selId[0], setSelId = s_selId[1];
+    var s_scrub = useState(null); var scrub = s_scrub[0], setScrub = s_scrub[1];
     var lebar = daysBetweenISO(range.start, range.end);
+    var svgRef = useRef(null);
 
+    function scrubHandlers(W, xToValue) {
+      function posToVal(clientX) {
+        if (!svgRef.current) return null;
+        var rect = svgRef.current.getBoundingClientRect();
+        var ratio = W / rect.width;
+        var svgX = (clientX - rect.left) * ratio;
+        return xToValue(svgX);
+      }
+      return {
+        onPointerDown: function (ev) { var v = posToVal(ev.clientX); if (v !== null) setScrub(v); },
+        onPointerMove: function (ev) { if (ev.buttons !== 1 && ev.pointerType !== 'touch') return; var v = posToVal(ev.clientX); if (v !== null) setScrub(v); },
+        onPointerUp: function () { setScrub(null); },
+        onPointerLeave: function () { setScrub(null); },
+        onPointerCancel: function () { setScrub(null); }
+      };
+    }
+
+    var displayNominal = scrub !== null ? scrub : saldoNow;
     var chartEl, drillEl = null;
 
     if (lebar === 0) {
@@ -585,12 +606,18 @@
           var isSel = selId === t.id;
           return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isSel ? 1 : 0.65, style: { cursor: 'pointer' }, onClick: function () { setSelId(selId === t.id ? null : t.id); } });
         });
+        var xToVal = function (svgX) {
+          var idx = n > 1 ? Math.round((svgX - padL) / xStep) : 0;
+          idx = Math.max(0, Math.min(n - 1, idx));
+          var t = todays[idx];
+          return t.tipe === 'pengeluaran' ? -t.nominal : t.nominal;
+        };
+        var handlers = scrubHandlers(W, xToVal);
         chartEl = e('div', null,
-          e('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block' } },
+          e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none' } }, handlers),
             e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
             bars
-          ),
-          e('div', { style: { fontSize: 10, color: '#5f6a78', marginTop: 2, textAlign: 'center' } }, range.start)
+          )
         );
         if (selId) {
           var t2 = todays.filter(function (x) { return x.id === selId; })[0];
@@ -626,14 +653,19 @@
           selMarks.push(e('circle', { key: 's2', cx: xAt2(si2), cy: yAt2(byDateOut[selDate] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
         }
       }
+      var xToVal2 = function (svgX) {
+        var idx = n2 > 1 ? Math.round((svgX - padL2) / xStep2) : 0;
+        idx = Math.max(0, Math.min(n2 - 1, idx));
+        var d = dates[idx];
+        var vIn = byDateIn[d] || 0, vOut = byDateOut[d] || 0;
+        return vIn >= vOut ? vIn : -vOut;
+      };
+      var handlers2 = scrubHandlers(W2, xToVal2);
       chartEl = e('div', null,
-        e('svg', { viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block' } },
+        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
           selMarks, dotsIn, dotsOut
-        ),
-        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
-          e('span', null, dates[0]), e('span', null, dates[n2 - 1])
         )
       );
       if (selDate) {
@@ -658,7 +690,7 @@
       });
       var cum3 = 0;
       var points3 = dates3.map(function (d) { cum3 += (byDateNet[d] || 0); return { tanggal: d, net: byDateNet[d] || 0, kumulatif: cum3 }; });
-      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 4, padT3 = 12, padB3 = 14;
+      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 4, padT3 = 20, padB3 = 14;
       var n3 = points3.length;
       var baseline3 = H3 - padB3 - (H3 - padT3 - padB3) * 0.35;
       var maxAbsNet = Math.max.apply(null, points3.map(function (p) { return Math.abs(p.net); })) || 1;
@@ -688,15 +720,32 @@
         var si3 = points3.map(function (p) { return p.tanggal; }).indexOf(selDate);
         if (si3 >= 0) selMark3 = e('circle', { key: 'sel3', cx: xAt3(si3), cy: yKum3(points3[si3].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 });
       }
+      var maxNetIdx = 0, minNetIdx = 0;
+      points3.forEach(function (p, i) {
+        if (p.net > points3[maxNetIdx].net) maxNetIdx = i;
+        if (p.net < points3[minNetIdx].net) minNetIdx = i;
+      });
+      var netLabels = [];
+      if (points3[maxNetIdx].net > 0) netLabels.push(e('text', {
+        key: 'lblmax', x: xAt3(maxNetIdx), y: Math.max(10, yKum3(points3[maxNetIdx].kumulatif) - 9), fill: HIJAU,
+        fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+      }, '+' + shortFmt(points3[maxNetIdx].net)));
+      if (points3[minNetIdx].net < 0) netLabels.push(e('text', {
+        key: 'lblmin', x: xAt3(minNetIdx), y: Math.min(H3 - 4, yKum3(points3[minNetIdx].kumulatif) + 13), fill: MERAH,
+        fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+      }, shortFmt(points3[minNetIdx].net)));
+      var xToVal3 = function (svgX) {
+        var idx = n3 > 1 ? Math.round((svgX - padL3) / xStep3) : 0;
+        idx = Math.max(0, Math.min(n3 - 1, idx));
+        return points3[idx].kumulatif;
+      };
+      var handlers3 = scrubHandlers(W3, xToVal3);
       chartEl = e('div', null,
-        e('svg', { viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block' } },
+        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none' } }, handlers3),
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          selMark3, hitTargets3
-        ),
-        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
-          e('span', null, points3[0].tanggal), e('span', null, points3[n3 - 1].tanggal)
+          selMark3, netLabels, hitTargets3
         )
       );
       if (selDate) {
@@ -708,12 +757,11 @@
     }
 
     return e('div', null,
-      e('div', { className: 'num', style: { fontSize: 20, color: '#e8dcc0', fontWeight: 700, marginBottom: 8 } }, fmt(saldoNow)),
+      e('div', { className: 'num', style: { fontSize: 20, color: scrub !== null ? '#c9a15a' : '#e8dcc0', fontWeight: 700, marginBottom: 8 } }, fmt(displayNominal)),
       e(DateRangePicker, { start: range.start, end: range.end, accent: '#c9a15a', onChange: function (s, en) { setRange({ start: s, end: en }); setSelDate(null); setSelId(null); } }),
       chartEl, drillEl
     );
   }
-
 
   function App() {
     var dataState = useLocalData(STORAGE_KEY, SEED);
