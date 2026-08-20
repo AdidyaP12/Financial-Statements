@@ -582,6 +582,16 @@
       };
     }
 
+    function yAxisLabels(minV, maxV, yAtFn, xRight, count) {
+      count = count || 4;
+      var out = [];
+      for (var i = 0; i <= count; i++) {
+        var v = minV + (maxV - minV) * i / count;
+        out.push(e('text', { key: 'yl' + i, x: xRight, y: yAtFn(v) + 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'end', fontFamily: 'SF Mono, Courier New, monospace' }, shortFmt(Math.round(v))));
+      }
+      return out;
+    }
+
     var chartEl, drillEl = null, displayNominal = saldoNow;
 
     if (lebar === 0) {
@@ -590,7 +600,7 @@
       if (todays.length === 0) {
         chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
       } else {
-        var W = 300, H = 130, padL = 6, padR = 6, padT = 16, padB = 16;
+        var W = 300, H = 130, padL = 6, padR = 30, padT = 16, padB = 16;
         var n = todays.length;
         var maxAbs = Math.max.apply(null, todays.map(function (t) { return t.nominal; })) || 1;
         var baseline = H / 2;
@@ -605,6 +615,8 @@
           var isActive = i === activeIdx;
           return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.6 });
         });
+        function yAtBar(v) { return baseline - (v / maxAbs) * (baseline - padT); }
+        var yLabels = yAxisLabels(-maxAbs, maxAbs, yAtBar, W - 4, 4);
         var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
         var xToIdx = function (svgX) {
           var idx = n > 1 ? Math.round((svgX - padL) / xStep) : 0;
@@ -614,7 +626,7 @@
         chartEl = e('div', null,
           e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none' } }, handlers),
             e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
-            bars, crosshair
+            bars, crosshair, yLabels
           )
         );
         if (activeIdx >= 0) {
@@ -634,9 +646,10 @@
         if (t.tipe === 'pemasukan') byDateIn[t.tanggal] = Math.max(byDateIn[t.tanggal] || 0, t.nominal);
         else if (t.tipe === 'pengeluaran') byDateOut[t.tanggal] = Math.max(byDateOut[t.tanggal] || 0, t.nominal);
       });
-      var W2 = 300, H2 = 120, padL2 = 6, padR2 = 6, padT2 = 16, padB2 = 16;
+      var W2 = 300, H2 = 120, padL2 = 6, padR2 = 30, padT2 = 16, padB2 = 16;
       var maxV = Math.max.apply(null, dates.map(function (d) { return Math.max(byDateIn[d] || 0, byDateOut[d] || 0); }).concat([1]));
       function yAt2(v) { return H2 - padB2 - (v / maxV) * (H2 - padT2 - padB2); }
+      var yLabels2 = yAxisLabels(0, maxV, yAt2, W2 - 4, 4);
       var n2 = dates.length;
       var xStep2 = n2 > 1 ? (W2 - padL2 - padR2) / (n2 - 1) : 0;
       function xAt2(i) { return n2 > 1 ? padL2 + i * xStep2 : W2 / 2; }
@@ -659,7 +672,7 @@
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
-          crosshair2, marks2
+          crosshair2, marks2, yLabels2
         )
       );
       if (activeIdx2 >= 0) {
@@ -686,7 +699,7 @@
       });
       var cum3 = 0;
       var points3 = dates3.map(function (d) { cum3 += (byDateNet[d] || 0); return { tanggal: d, net: byDateNet[d] || 0, kumulatif: cum3 }; });
-      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 4, padT3 = 20, padB3 = 14;
+      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 30, padT3 = 20, padB3 = 14;
       var n3 = points3.length;
       var baseline3 = H3 - padB3 - (H3 - padT3 - padB3) * 0.35;
       var maxAbsNet = Math.max.apply(null, points3.map(function (p) { return Math.abs(p.net); })) || 1;
@@ -725,6 +738,7 @@
         key: 'lblmin', x: xAt3(minNetIdx), y: Math.min(H3 - 4, yKum3(points3[minNetIdx].kumulatif) + 13), fill: MERAH,
         fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
       }, shortFmt(points3[minNetIdx].net)));
+      var yLabels3 = yAxisLabels(minKum, maxKum, yKum3, W3 - 4, 4);
       var xToIdx3 = function (svgX) {
         var idx = n3 > 1 ? Math.round((svgX - padL3) / xStep3) : 0;
         return Math.max(0, Math.min(n3 - 1, idx));
@@ -735,7 +749,7 @@
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          crosshair3, mark3, netLabels
+          crosshair3, mark3, netLabels, yLabels3
         )
       );
       if (activeIdx3 >= 0) {
