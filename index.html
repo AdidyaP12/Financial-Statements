@@ -329,6 +329,16 @@
     return waktuInput ? new Date(waktuInput).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
   }
   var BULAN_PENDEK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  var BULAN_PANJANG = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  var HARI_PANJANG = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  function formatTglLengkapHari(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return HARI_PANJANG[d.getDay()] + ', ' + d.getDate() + ' ' + BULAN_PANJANG[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function formatTglLengkap(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return d.getDate() + ' ' + BULAN_PANJANG[d.getMonth()] + ' ' + d.getFullYear();
+  }
   function formatTglPendek(iso) {
     var d = new Date(iso + 'T00:00:00');
     return d.getDate() + ' ' + BULAN_PENDEK[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
@@ -668,19 +678,28 @@
         return Math.max(0, Math.min(n2 - 1, idx));
       };
       var handlers2 = makeHandlers(W2, function (svgX) { return dates[xToIdx2(svgX)]; });
+      var xLabels2 = e('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 4, padding: '0 2px' } },
+        dates.map(function (d) {
+          return e('span', {
+            key: 'xl' + d,
+            style: { fontSize: 8.5, color: '#5f6a78', transform: 'rotate(-40deg)', transformOrigin: 'left top', whiteSpace: 'nowrap', display: 'inline-block', width: 10 }
+          }, formatTglLengkapHari(d));
+        })
+      );
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
           crosshair2, marks2, yLabels2
-        )
+        ),
+        xLabels2
       );
       if (activeIdx2 >= 0) {
         var vIn = byDateIn[active] || 0, vOut = byDateOut[active] || 0;
         displayNominal = vIn - vOut;
         var items2 = transaksi.filter(function (t) { return t.tanggal === active && (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran'); });
         drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, active + ' (pemasukan tertinggi ' + fmt(vIn) + ', pengeluaran tertinggi ' + fmt(vOut) + ')'),
+          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, formatTglLengkapHari(active) + ' (pemasukan tertinggi ' + fmt(vIn) + ', pengeluaran tertinggi ' + fmt(vOut) + ')'),
           items2.map(function (t) {
             var c = t.tipe === 'pemasukan' ? HIJAU : MERAH;
             return e('div', { className: 'row', key: t.id },
@@ -730,14 +749,20 @@
         if (p.net < points3[minNetIdx].net) minNetIdx = i;
       });
       var netLabels = [];
-      if (points3[maxNetIdx].net > 0) netLabels.push(e('text', {
-        key: 'lblmax', x: xAt3(maxNetIdx), y: Math.max(10, yKum3(points3[maxNetIdx].kumulatif) - 9), fill: HIJAU,
-        fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
-      }, '+' + shortFmt(points3[maxNetIdx].net)));
-      if (points3[minNetIdx].net < 0) netLabels.push(e('text', {
-        key: 'lblmin', x: xAt3(minNetIdx), y: Math.min(H3 - 4, yKum3(points3[minNetIdx].kumulatif) + 13), fill: MERAH,
-        fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
-      }, shortFmt(points3[minNetIdx].net)));
+      if (points3[maxNetIdx].net > 0) {
+        var hMax = (Math.abs(points3[maxNetIdx].net) / maxAbsNet) * barBudget;
+        netLabels.push(e('text', {
+          key: 'lblmax', x: xAt3(maxNetIdx), y: Math.max(10, baseline3 - hMax - 5), fill: HIJAU,
+          fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+        }, '+' + shortFmt(points3[maxNetIdx].net)));
+      }
+      if (points3[minNetIdx].net < 0) {
+        var hMin = (Math.abs(points3[minNetIdx].net) / maxAbsNet) * barBudget;
+        netLabels.push(e('text', {
+          key: 'lblmin', x: xAt3(minNetIdx), y: Math.min(H3 - 4, baseline3 + hMin + 11), fill: MERAH,
+          fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace'
+        }, shortFmt(points3[minNetIdx].net)));
+      }
       var yLabels3 = yAxisLabels(minKum, maxKum, yKum3, W3 - 4, 4);
       var xToIdx3 = function (svgX) {
         var idx = n3 > 1 ? Math.round((svgX - padL3) / xStep3) : 0;
@@ -746,17 +771,21 @@
       var handlers3 = makeHandlers(W3, function (svgX) { return points3[xToIdx3(svgX)].tanggal; });
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none' } }, handlers3),
-          e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#2c3644', strokeWidth: 1 }),
+          e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#232c37', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           crosshair3, mark3, netLabels, yLabels3
+        ),
+        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
+          e('span', null, formatTglPendek(dates3[0])),
+          e('span', null, formatTglPendek(dates3[n3 - 1]))
         )
       );
       if (activeIdx3 >= 0) {
         var pSel = points3[activeIdx3];
         displayNominal = pSel.kumulatif;
         drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-          e('div', { style: { fontSize: 13 } }, pSel.tanggal + ' \u2014 Net ', e('span', { className: 'num', style: { color: pSel.net >= 0 ? HIJAU : MERAH } }, fmt(pSel.net)))
+          e('div', { style: { fontSize: 13 } }, formatTglLengkap(pSel.tanggal) + ' \u2014 Net ', e('span', { className: 'num', style: { color: pSel.net >= 0 ? HIJAU : MERAH } }, fmt(pSel.net)))
         );
       }
     }
