@@ -568,6 +568,27 @@
     );
   }
 
+  function xAxisDayLabels(dates, xAtFn, y) {
+    var out = [];
+    var prevMonth = null;
+    dates.forEach(function (d, i) {
+      var dt = new Date(d + 'T00:00:00');
+      var m = dt.getMonth();
+      if (m !== prevMonth) {
+        out.push(e('text', {
+          key: 'mo' + d, x: xAtFn(i) - 9, y: y, fill: '#7d8794', fontSize: 8.5,
+          textAnchor: 'end', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' }
+        }, BULAN_PENDEK[m]));
+        prevMonth = m;
+      }
+      out.push(e('text', {
+        key: 'day' + d, x: xAtFn(i), y: y, fill: '#5f6a78', fontSize: 8.5,
+        textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' }
+      }, dt.getDate()));
+    });
+    return out;
+  }
+
   function NetRangeChart(props) {
     var transaksi = props.transaksi, saldoNow = props.saldoNow;
     var HIJAU = '#7fb37a', MERAH = '#d2766c';
@@ -688,12 +709,7 @@
         return Math.max(0, Math.min(n2 - 1, idx));
       };
       var handlers2 = makeHandlers(W2, function (svgX) { return dates[xToIdx2(svgX)]; });
-      var xLabels2 = dates.map(function (d, i) {
-        return e('text', {
-          key: 'xl' + d, x: xAt2(i), y: H2 - 3, fill: '#5f6a78', fontSize: 8.5,
-          textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' }
-        }, formatTglPendek(d));
-      });
+      var xLabels2 = xAxisDayLabels(dates, xAt2, H2 - 3);
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
@@ -776,16 +792,13 @@
         return Math.max(0, Math.min(n3 - 1, idx));
       };
       var handlers3 = makeHandlers(W3, function (svgX) { return points3[xToIdx3(svgX)].tanggal; });
+      var xLabels3 = xAxisDayLabels(dates3, xAt3, H3 - 3);
       chartEl = e('div', null,
         e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers3),
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#232c37', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          crosshair3, mark3, netLabels, yLabels3
-        ),
-        e('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5f6a78', marginTop: 2 } },
-          e('span', null, formatTglPendek(dates3[0])),
-          e('span', null, formatTglPendek(dates3[n3 - 1]))
+          crosshair3, mark3, netLabels, yLabels3, xLabels3
         )
       );
       if (activeIdx3 >= 0) {
