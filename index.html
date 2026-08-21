@@ -677,64 +677,73 @@
         }
       }
     } else if (lebar <= 7) {
-      var dates = enumerateDates(range.start, range.end);
-      var byDateIn = {}, byDateOut = {}, byDateInTx = {}, byDateOutTx = {};
-      transaksi.forEach(function (t) {
-        if (t.tipe === 'pemasukan') {
-          if (!byDateInTx[t.tanggal] || t.nominal > byDateIn[t.tanggal]) { byDateIn[t.tanggal] = t.nominal; byDateInTx[t.tanggal] = t; }
-        } else if (t.tipe === 'pengeluaran') {
-          if (!byDateOutTx[t.tanggal] || t.nominal > byDateOut[t.tanggal]) { byDateOut[t.tanggal] = t.nominal; byDateOutTx[t.tanggal] = t; }
+      var items = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal >= range.start && t.tanggal <= range.end; })
+        .slice().sort(function (a, b) {
+          var wa = a.waktuInput ? new Date(a.waktuInput) : new Date(a.tanggal + 'T00:00:00');
+          var wb = b.waktuInput ? new Date(b.waktuInput) : new Date(b.tanggal + 'T00:00:00');
+          if (wa - wb !== 0) return wa - wb;
+          return a.tanggal < b.tanggal ? -1 : a.tanggal > b.tanggal ? 1 : 0;
+        });
+      if (items.length === 0) {
+        chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi di rentang ini.');
+      } else {
+        var cum2 = 0;
+        var pts2 = items.map(function (t) {
+          cum2 += t.tipe === 'pengeluaran' ? -t.nominal : t.nominal;
+          return { t: t, kumulatif: cum2 };
+        });
+        var W2 = 300, H2 = 130, padL2 = 20, padR2 = 12, padT2 = 24, padB2 = 18;
+        var n2 = pts2.length;
+        var maxAbsNom = Math.max.apply(null, items.map(function (t) { return t.nominal; })) || 1;
+        var baseline2 = H2 - padB2 - (H2 - padT2 - padB2) * 0.32;
+        var barBudget2 = (H2 - padT2 - padB2) * 0.28;
+        var maxKum2 = Math.max.apply(null, pts2.map(function (p) { return p.kumulatif; }).concat([0]));
+        var minKum2 = Math.min.apply(null, pts2.map(function (p) { return p.kumulatif; }).concat([0]));
+        var rangeKum2 = (maxKum2 - minKum2) || 1;
+        var lineTop2 = padT2, lineBot2 = baseline2 - 6;
+        function yKum2(v) { return lineBot2 - ((v - minKum2) / rangeKum2) * (lineBot2 - lineTop2); }
+        var xStep2 = n2 > 1 ? (W2 - padL2 - padR2) / (n2 - 1) : 0;
+        function xAt2(i) { return n2 > 1 ? padL2 + i * xStep2 : W2 / 2; }
+        var barW2 = Math.max(2, Math.min(10, xStep2 * 0.5));
+        var bars2 = pts2.map(function (p, i) {
+          var isNeg = p.t.tipe === 'pengeluaran';
+          var h = (p.t.nominal / maxAbsNom) * barBudget2;
+          var y = isNeg ? baseline2 : baseline2 - h;
+          return e('rect', { key: 'b' + p.t.id, x: xAt2(i) - barW2 / 2, y: y, width: barW2, height: Math.max(1, h), fill: isNeg ? MERAH : HIJAU, opacity: 0.55 });
+        });
+        var segs2 = [];
+        for (var si = 1; si < n2; si++) {
+          var warnaSeg = pts2[si].kumulatif >= 0 ? HIJAU : MERAH;
+          segs2.push(e('line', { key: 'seg' + si, x1: xAt2(si - 1), y1: yKum2(pts2[si - 1].kumulatif), x2: xAt2(si), y2: yKum2(pts2[si].kumulatif), stroke: warnaSeg, strokeWidth: 1.8 }));
         }
-      });
-      var W2 = 300, H2 = 120, padL2 = 20, padR2 = 30, padT2 = 24, padB2 = 16;
-      var maxV = Math.max.apply(null, dates.map(function (d) { return Math.max(byDateIn[d] || 0, byDateOut[d] || 0); }).concat([1]));
-      function yAt2(v) { return H2 - padB2 - (v / maxV) * (H2 - padT2 - padB2); }
-      var yLabels2 = yAxisLabels(0, maxV, yAt2, W2 - 4, 4);
-      var n2 = dates.length;
-      var xStep2 = n2 > 1 ? (W2 - padL2 - padR2) / (n2 - 1) : 0;
-      function xAt2(i) { return n2 > 1 ? padL2 + i * xStep2 : W2 / 2; }
-      var ptsIn = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateIn[d] || 0)]; });
-      var ptsOut = dates.map(function (d, i) { return [xAt2(i), yAt2(byDateOut[d] || 0)]; });
-      var pathIn = smoothPathD(ptsIn), pathOut = smoothPathD(ptsOut);
-      var activeIdx2 = active !== null ? dates.indexOf(active) : -1;
-      var marks2 = [];
-      var timeLabel2 = null;
-      if (activeIdx2 >= 0) {
-        marks2.push(e('circle', { key: 's1', cx: xAt2(activeIdx2), cy: yAt2(byDateIn[active] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
-        marks2.push(e('circle', { key: 's2', cx: xAt2(activeIdx2), cy: yAt2(byDateOut[active] || 0), r: 4.5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }));
-        var jamIn = byDateInTx[active] ? jamDari(byDateInTx[active].waktuInput) : null;
-        var jamOut = byDateOutTx[active] ? jamDari(byDateOutTx[active].waktuInput) : null;
-        var teksJam = [jamIn, jamOut].filter(Boolean).join(' \u00b7 ');
-        if (teksJam) timeLabel2 = e('text', { key: 'tj', x: xAt2(activeIdx2), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, teksJam);
-      }
-      var crosshair2 = activeIdx2 >= 0 ? e('line', { x1: xAt2(activeIdx2), y1: padT2 - 6, x2: xAt2(activeIdx2), y2: H2 - padB2, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
-      var xToIdx2 = function (svgX) {
-        var idx = n2 > 1 ? Math.round((svgX - padL2) / xStep2) : 0;
-        return Math.max(0, Math.min(n2 - 1, idx));
-      };
-      var handlers2 = makeHandlers(W2, function (svgX) { return dates[xToIdx2(svgX)]; });
-      var xLabels2 = xAxisDayLabels(dates, xAt2, H2 - 3);
-      chartEl = e('div', null,
-        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers2),
-          e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
-          crosshair2, marks2, yLabels2, xLabels2, timeLabel2
-        )
-      );
-      if (activeIdx2 >= 0) {
-        var vIn = byDateIn[active] || 0, vOut = byDateOut[active] || 0;
-        displayNominal = vIn - vOut;
-        var items2 = transaksi.filter(function (t) { return t.tanggal === active && (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran'); });
-        drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
-          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, formatTglLengkapHari(active) + ' (pemasukan tertinggi ' + fmt(vIn) + ', pengeluaran tertinggi ' + fmt(vOut) + ')'),
-          items2.map(function (t) {
-            var c = t.tipe === 'pemasukan' ? HIJAU : MERAH;
-            return e('div', { className: 'row', key: t.id },
-              e('span', { style: { fontSize: 13 } }, t.jenis + (t.kategori ? ' \u00b7 ' + t.kategori : '')),
-              e('span', { className: 'num', style: { fontSize: 13, color: c } }, (t.tipe === 'pengeluaran' ? '-' : '+') + fmt(t.nominal))
-            );
-          })
+        if (n2 === 1) segs2.push(e('circle', { key: 'solo', cx: xAt2(0), cy: yKum2(pts2[0].kumulatif), r: 3, fill: pts2[0].kumulatif >= 0 ? HIJAU : MERAH }));
+        var activeIdx2 = active !== null ? items.map(function (t) { return t.id; }).indexOf(active) : -1;
+        var mark2 = activeIdx2 >= 0 ? e('circle', { key: 'sel2', cx: xAt2(activeIdx2), cy: yKum2(pts2[activeIdx2].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+        var crosshair2 = activeIdx2 >= 0 ? e('line', { x1: xAt2(activeIdx2), y1: padT2 - 6, x2: xAt2(activeIdx2), y2: H2 - padB2, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+        var timeLabel2 = activeIdx2 >= 0 ? e('text', { key: 'tj', x: xAt2(activeIdx2), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, formatTglPendek(items[activeIdx2].tanggal) + ' \u00b7 ' + jamDari(items[activeIdx2].waktuInput)) : null;
+        var yLabels2 = yAxisLabels(minKum2, maxKum2, yKum2, W2 - 4, 4);
+        var xToIdx2 = function (svgX) {
+          var idx = n2 > 1 ? Math.round((svgX - padL2) / xStep2) : 0;
+          return Math.max(0, Math.min(n2 - 1, idx));
+        };
+        var handlers2 = makeHandlers(W2, function (svgX) { return items[xToIdx2(svgX)].id; });
+        var itemDates2 = items.map(function (t) { return t.tanggal; });
+        var xLabels2 = xAxisDayLabels(itemDates2, xAt2, H2 - 3);
+        chartEl = e('div', null,
+          e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 148, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers2),
+            e('line', { x1: padL2, y1: baseline2, x2: W2 - padR2, y2: baseline2, stroke: '#232c37', strokeWidth: 1 }),
+            bars2, segs2, crosshair2, mark2, yLabels2, xLabels2, timeLabel2
+          )
         );
+        if (activeIdx2 >= 0) {
+          var tAct = items[activeIdx2];
+          displayNominal = pts2[activeIdx2].kumulatif;
+          var cAct = tAct.tipe === 'pengeluaran' ? MERAH : HIJAU;
+          drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
+            formatTglLengkapHari(tAct.tanggal) + ' \u00b7 ' + jamDari(tAct.waktuInput) + ' \u2014 ' + tAct.jenis + (tAct.kategori ? ' \u00b7 ' + tAct.kategori : '') + ' ',
+            e('span', { className: 'num', style: { color: cAct } }, (tAct.tipe === 'pengeluaran' ? '-' : '+') + fmt(tAct.nominal))
+          );
+        }
       }
     } else {
       var dates3 = enumerateDates(range.start, range.end);
