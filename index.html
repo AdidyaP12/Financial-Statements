@@ -570,8 +570,12 @@
 
   function xAxisDayLabels(dates, xAtFn, y) {
     var out = [];
+    var n = dates.length;
+    var step = n <= 8 ? 1 : Math.ceil(n / 5);
     var prevMonth = null;
     dates.forEach(function (d, i) {
+      var isEdge = i === 0 || i === n - 1;
+      if (!isEdge && i % step !== 0) return;
       var dt = new Date(d + 'T00:00:00');
       var m = dt.getMonth();
       if (m !== prevMonth) {
@@ -682,7 +686,7 @@
           if (!byDateOutTx[t.tanggal] || t.nominal > byDateOut[t.tanggal]) { byDateOut[t.tanggal] = t.nominal; byDateOutTx[t.tanggal] = t; }
         }
       });
-      var W2 = 300, H2 = 120, padL2 = 6, padR2 = 30, padT2 = 24, padB2 = 16;
+      var W2 = 300, H2 = 120, padL2 = 20, padR2 = 30, padT2 = 24, padB2 = 16;
       var maxV = Math.max.apply(null, dates.map(function (d) { return Math.max(byDateIn[d] || 0, byDateOut[d] || 0); }).concat([1]));
       function yAt2(v) { return H2 - padB2 - (v / maxV) * (H2 - padT2 - padB2); }
       var yLabels2 = yAxisLabels(0, maxV, yAt2, W2 - 4, 4);
@@ -741,7 +745,7 @@
       });
       var cum3 = 0;
       var points3 = dates3.map(function (d) { cum3 += (byDateNet[d] || 0); return { tanggal: d, net: byDateNet[d] || 0, kumulatif: cum3 }; });
-      var W3 = 300, H3 = 130, padL3 = 4, padR3 = 30, padT3 = 20, padB3 = 14;
+      var W3 = 300, H3 = 130, padL3 = 20, padR3 = 30, padT3 = 20, padB3 = 14;
       var n3 = points3.length;
       var baseline3 = H3 - padB3 - (H3 - padT3 - padB3) * 0.35;
       var maxAbsNet = Math.max.apply(null, points3.map(function (p) { return Math.abs(p.net); })) || 1;
@@ -766,6 +770,7 @@
       var activeIdx3 = active !== null ? points3.map(function (p) { return p.tanggal; }).indexOf(active) : -1;
       var mark3 = activeIdx3 >= 0 ? e('circle', { key: 'sel3', cx: xAt3(activeIdx3), cy: yKum3(points3[activeIdx3].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
       var crosshair3 = activeIdx3 >= 0 ? e('line', { x1: xAt3(activeIdx3), y1: padT3 - 6, x2: xAt3(activeIdx3), y2: H3 - padB3, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+      var timeLabel3 = activeIdx3 >= 0 ? e('text', { key: 'tj3', x: xAt3(activeIdx3), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, formatTglPendek(points3[activeIdx3].tanggal)) : null;
       var maxNetIdx = 0, minNetIdx = 0;
       points3.forEach(function (p, i) {
         if (p.net > points3[maxNetIdx].net) maxNetIdx = i;
@@ -798,7 +803,7 @@
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#232c37', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
-          crosshair3, mark3, netLabels, yLabels3, xLabels3
+          crosshair3, mark3, netLabels, yLabels3, xLabels3, timeLabel3
         )
       );
       if (activeIdx3 >= 0) {
