@@ -171,6 +171,7 @@
     var s_wt = useState(wallets[1] ? wallets[1].id : ''); var walletTujuanId = s_wt[0], setWalletTujuanId = s_wt[1];
     var s_admin = useState(''); var biayaAdmin = s_admin[0], setBiayaAdmin = s_admin[1];
     var s_tgl = useState(todayISO()); var tanggal = s_tgl[0], setTanggal = s_tgl[1];
+    var s_jam = useState(function () { var d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }); var jam = s_jam[0], setJam = s_jam[1];
     var jenisList = tipe === 'pemasukan' ? JENIS_PEMASUKAN : tipe === 'pengeluaran' ? JENIS_PENGELUARAN : null;
 
     if (wallets.length === 0) {
@@ -205,10 +206,11 @@
       children.push(e(Field, { label: 'Biaya admin transfer (opsional)', key: 'f7' }, e('input', { style: inputStyle, type: 'number', value: biayaAdmin, onChange: function (ev) { setBiayaAdmin(ev.target.value); }, placeholder: '0' })));
     }
     children.push(e(Field, { label: 'Tanggal', key: 'f8' }, e('input', { style: inputStyle, type: 'date', value: tanggal, onChange: function (ev) { setTanggal(ev.target.value); } })));
+    children.push(e(Field, { label: 'Jam', key: 'f9' }, e('input', { style: inputStyle, type: 'time', value: jam, onChange: function (ev) { setJam(ev.target.value); } })));
     children.push(e('button', {
       key: 'btn', style: Object.assign({}, btnPrimary, { width: '100%', marginTop: 6 }), onClick: function () {
         if (!nominal) return;
-        props.onSave({ tipe: tipe, jenis: jenisList ? jenis : null, kategori: kategori, nominal: Number(nominal), walletId: walletId, walletTujuanId: tipe === 'transfer' ? walletTujuanId : null, biayaAdmin: Number(biayaAdmin) || 0, tanggal: tanggal });
+        props.onSave({ tipe: tipe, jenis: jenisList ? jenis : null, kategori: kategori, nominal: Number(nominal), walletId: walletId, walletTujuanId: tipe === 'transfer' ? walletTujuanId : null, biayaAdmin: Number(biayaAdmin) || 0, tanggal: tanggal, jamManual: jam });
       }
     }, 'Simpan'));
 
@@ -634,7 +636,7 @@
         };
         var handlers = makeHandlers(W, function (svgX) { return todays[xToIdx(svgX)].id; });
         chartEl = e('div', null,
-          e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none' } }, handlers),
+          e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers),
             e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
             bars, crosshair, yLabels
           )
@@ -678,21 +680,18 @@
         return Math.max(0, Math.min(n2 - 1, idx));
       };
       var handlers2 = makeHandlers(W2, function (svgX) { return dates[xToIdx2(svgX)]; });
-      var xLabels2 = e('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 4, padding: '0 2px' } },
-        dates.map(function (d) {
-          return e('span', {
-            key: 'xl' + d,
-            style: { fontSize: 8.5, color: '#5f6a78', transform: 'rotate(-40deg)', transformOrigin: 'left top', whiteSpace: 'nowrap', display: 'inline-block', width: 10 }
-          }, formatTglLengkapHari(d));
-        })
-      );
+      var xLabels2 = dates.map(function (d, i) {
+        return e('text', {
+          key: 'xl' + d, x: xAt2(i), y: H2 - 3, fill: '#5f6a78', fontSize: 8.5,
+          textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' }
+        }, formatTglPendek(d));
+      });
       chartEl = e('div', null,
-        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none' } }, handlers2),
+        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2 + ' ' + H2, style: { width: '100%', height: 138, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers2),
           e('path', { d: pathIn, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
           e('path', { d: pathOut, fill: 'none', stroke: MERAH, strokeWidth: 1.8 }),
-          crosshair2, marks2, yLabels2
-        ),
-        xLabels2
+          crosshair2, marks2, yLabels2, xLabels2
+        )
       );
       if (activeIdx2 >= 0) {
         var vIn = byDateIn[active] || 0, vOut = byDateOut[active] || 0;
@@ -770,7 +769,7 @@
       };
       var handlers3 = makeHandlers(W3, function (svgX) { return points3[xToIdx3(svgX)].tanggal; });
       chartEl = e('div', null,
-        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none' } }, handlers3),
+        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W3 + ' ' + H3, style: { width: '100%', height: 150, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers3),
           e('line', { x1: padL3, y1: baseline3, x2: W3 - padR3, y2: baseline3, stroke: '#232c37', strokeWidth: 1 }),
           bars3,
           e('path', { d: lineD3, fill: 'none', stroke: HIJAU, strokeWidth: 1.8 }),
@@ -832,7 +831,11 @@
     var totalUtang = utangDetail.reduce(function (a, u) { return a + u.sisaTagihan; }, 0);
     var kekayaanBersih = totalWallet + totalHarta - totalUtang;
 
-    function addTransaksi(t) { setData(function (d) { return Object.assign({}, d, { transaksi: [Object.assign({ id: 't' + Date.now(), waktuInput: new Date().toISOString() }, t)].concat(d.transaksi) }); }); }
+    function addTransaksi(t) {
+      var waktuFinal = t.jamManual ? new Date(t.tanggal + 'T' + t.jamManual + ':00').toISOString() : new Date().toISOString();
+      var clean = Object.assign({}, t); delete clean.jamManual;
+      setData(function (d) { return Object.assign({}, d, { transaksi: [Object.assign({ id: 't' + Date.now(), waktuInput: waktuFinal }, clean)].concat(d.transaksi) }); });
+    }
     function addWallet(w) { setData(function (d) { return Object.assign({}, d, { wallets: d.wallets.concat([Object.assign({ id: 'w' + Date.now() }, w)]) }); }); }
     function addHarta(h) { setData(function (d) { return Object.assign({}, d, { harta: d.harta.concat([Object.assign({ id: 'h' + Date.now() }, h)]) }); }); }
     function addUtang(u) { setData(function (d) { return Object.assign({}, d, { utang: d.utang.concat([Object.assign({ id: 'u' + Date.now() }, u)]) }); }); }
