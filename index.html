@@ -633,28 +633,49 @@
 
     if (lebar === 0) {
       var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === range.start; })
-        .slice().sort(function (a, b) { return new Date(a.waktuInput || 0) - new Date(b.waktuInput || 0); });
+        .slice().sort(function (a, b) {
+          var wa = new Date(a.waktuInput || 0).getTime(), wb = new Date(b.waktuInput || 0).getTime();
+          if (wa !== wb) return wa - wb;
+          var ia = parseInt(String(a.id).slice(1), 10) || 0, ib = parseInt(String(b.id).slice(1), 10) || 0;
+          return ia - ib;
+        });
       if (todays.length === 0) {
         chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
       } else {
-        var W = 300, H = 130, padL = 6, padR = 30, padT = 16, padB = 16;
+        var W = 300, H = 130, padL = 30, padR = 30, padT = 24, padB = 18;
         var n = todays.length;
         var maxAbs = Math.max.apply(null, todays.map(function (t) { return t.nominal; })) || 1;
-        var baseline = H / 2;
+        var baseline = H - padB - (H - padT - padB) * 0.35;
+        var barBudget0 = (H - padT - padB) * 0.32;
         var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
         function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
         var barW = Math.max(3, Math.min(14, xStep * 0.5));
         var activeIdx = active !== null ? todays.map(function (t) { return t.id; }).indexOf(active) : -1;
+        var cum0 = 0;
+        var kum0 = todays.map(function (t) { cum0 += t.tipe === 'pengeluaran' ? -t.nominal : t.nominal; return cum0; });
+        var totalNet0 = kum0.length ? kum0[kum0.length - 1] : 0;
+        var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
+        var maxKum0 = Math.max.apply(null, kum0.concat([0]));
+        var minKum0 = Math.min.apply(null, kum0.concat([0]));
+        var rangeKum0 = (maxKum0 - minKum0) || 1;
+        var lineTop0 = padT, lineBot0 = baseline - 6;
+        function yKum0(v) { return lineBot0 - ((v - minKum0) / rangeKum0) * (lineBot0 - lineTop0); }
         var bars = todays.map(function (t, i) {
           var isNeg = t.tipe === 'pengeluaran';
-          var h = (t.nominal / maxAbs) * (baseline - padT);
+          var h = (t.nominal / maxAbs) * barBudget0;
           var y = isNeg ? baseline : baseline - h;
           var isActive = i === activeIdx;
-          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.6 });
+          return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.55 });
         });
-        function yAtBar(v) { return baseline - (v / maxAbs) * (baseline - padT); }
+        var xyKum0 = todays.map(function (t, i) { return [xAt(i), yKum0(kum0[i])]; });
+        var lineD0 = smoothPathD(xyKum0);
+        var areaD0 = areaPathD(lineD0, xyKum0.map(function (p) { return p[0]; }), lineBot0);
+        function yAtBar(v) { return baseline - (v / maxAbs) * barBudget0; }
         var yLabels = yAxisLabels(-maxAbs, maxAbs, yAtBar, W - 4, 4);
+        var xLabelHari = e('text', { key: 'xlh', x: padL, y: H - 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'start', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' } }, formatTglPendek(range.start));
+        var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yKum0(kum0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
         var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+        var timeLabel0 = activeIdx >= 0 ? e('text', { key: 'tj0', x: xAt(activeIdx), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, jamDari(todays[activeIdx].waktuInput)) : null;
         var xToIdx = function (svgX) {
           var idx = n > 1 ? Math.round((svgX - padL) / xStep) : 0;
           return Math.max(0, Math.min(n - 1, idx));
@@ -662,18 +683,21 @@
         var handlers = makeHandlers(W, function (svgX) { return todays[xToIdx(svgX)].id; });
         chartEl = e('div', null,
           e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 148, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers),
-            e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#2c3644', strokeWidth: 1 }),
-            bars, crosshair, yLabels
+            e(AreaGradient, { color: warnaGaris0 }),
+            e('line', { x1: padL, y1: baseline, x2: W - padR, y2: baseline, stroke: '#232c37', strokeWidth: 1 }),
+            e('path', { d: areaD0, fill: 'url(#' + gradId(warnaGaris0) + ')', stroke: 'none' }),
+            bars,
+            e('path', { d: lineD0, fill: 'none', stroke: warnaGaris0, strokeWidth: 1.8 }),
+            crosshair, mark0, yLabels, xLabelHari, timeLabel0
           )
         );
         if (activeIdx >= 0) {
           var t2 = todays[activeIdx];
-          displayNominal = saldoNow;
+          displayNominal = kum0[activeIdx];
           drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
             jamDari(t2.waktuInput) + ' \u00b7 ' + t2.jenis + (t2.kategori ? ' \u00b7 ' + t2.kategori : '') + ' \u2014 ',
             e('span', { className: 'num', style: { color: t2.tipe === 'pengeluaran' ? MERAH : HIJAU } }, (t2.tipe === 'pengeluaran' ? '-' : '+') + fmt(t2.nominal))
           );
-          displayNominal = t2.tipe === 'pengeluaran' ? -t2.nominal : t2.nominal;
         }
       }
     } else {
@@ -687,7 +711,7 @@
       var points3 = dates3.map(function (d) { cum3 += (byDateNet[d] || 0); return { tanggal: d, net: byDateNet[d] || 0, kumulatif: cum3 }; });
       var totalNetRange = points3.length ? points3[points3.length - 1].kumulatif : 0;
       var warnaGaris = totalNetRange >= 0 ? HIJAU : MERAH;
-      var W3 = 300, H3 = 130, padL3 = 20, padR3 = 30, padT3 = 20, padB3 = 14;
+      var W3 = 300, H3 = 130, padL3 = 32, padR3 = 30, padT3 = 20, padB3 = 14;
       var n3 = points3.length;
       var baseline3 = H3 - padB3 - (H3 - padT3 - padB3) * 0.35;
       var maxAbsNet = Math.max.apply(null, points3.map(function (p) { return Math.abs(p.net); })) || 1;
