@@ -642,38 +642,48 @@
       if (todays.length === 0) {
         chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
       } else {
-        var W = 300, H = 130, padL = 30, padR = 30, padT = 24, padB = 18;
+        var W = 300, H = 130, padL = 32, padR = 36, padT = 26, padB = 18;
         var n = todays.length;
-        var maxAbs = Math.max.apply(null, todays.map(function (t) { return t.nominal; })) || 1;
-        var baseline = H - padB - (H - padT - padB) * 0.35;
-        var barBudget0 = (H - padT - padB) * 0.32;
+        var signed0 = todays.map(function (t) { return t.tipe === 'pengeluaran' ? -t.nominal : t.nominal; });
+        var cum0 = 0;
+        var kum0 = signed0.map(function (v) { cum0 += v; return cum0; });
+        var totalNet0 = kum0.length ? kum0[kum0.length - 1] : 0;
+        var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
+        var rawMax0 = Math.max.apply(null, signed0.concat(kum0).concat([0]));
+        var rawMin0 = Math.min.apply(null, signed0.concat(kum0).concat([0]));
+        var span0 = (rawMax0 - rawMin0) || 1;
+        var pad0 = span0 * 0.18;
+        var scaleMax0 = rawMax0 + pad0;
+        var scaleMin0 = rawMin0 - pad0;
+        var scaleSpan0 = (scaleMax0 - scaleMin0) || 1;
+        function yScale0(v) { return H - padB - ((v - scaleMin0) / scaleSpan0) * (H - padT - padB); }
+        var baseline = yScale0(0);
         var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
         function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
         var barW = Math.max(3, Math.min(14, xStep * 0.5));
         var activeIdx = active !== null ? todays.map(function (t) { return t.id; }).indexOf(active) : -1;
-        var cum0 = 0;
-        var kum0 = todays.map(function (t) { cum0 += t.tipe === 'pengeluaran' ? -t.nominal : t.nominal; return cum0; });
-        var totalNet0 = kum0.length ? kum0[kum0.length - 1] : 0;
-        var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
-        var maxKum0 = Math.max.apply(null, kum0.concat([0]));
-        var minKum0 = Math.min.apply(null, kum0.concat([0]));
-        var rangeKum0 = (maxKum0 - minKum0) || 1;
-        var lineTop0 = padT, lineBot0 = baseline - 6;
-        function yKum0(v) { return lineBot0 - ((v - minKum0) / rangeKum0) * (lineBot0 - lineTop0); }
         var bars = todays.map(function (t, i) {
           var isNeg = t.tipe === 'pengeluaran';
-          var h = (t.nominal / maxAbs) * barBudget0;
-          var y = isNeg ? baseline : baseline - h;
+          var yVal = yScale0(signed0[i]);
+          var y = isNeg ? baseline : yVal;
+          var h = Math.abs(yVal - baseline);
           var isActive = i === activeIdx;
           return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.55 });
         });
-        var xyKum0 = todays.map(function (t, i) { return [xAt(i), yKum0(kum0[i])]; });
-        var lineD0 = smoothPathD(xyKum0);
-        var areaD0 = areaPathD(lineD0, xyKum0.map(function (p) { return p[0]; }), lineBot0);
-        function yAtBar(v) { return baseline - (v / maxAbs) * barBudget0; }
-        var yLabels = yAxisLabels(-maxAbs, maxAbs, yAtBar, W - 4, 4);
+        var xyKum0 = todays.map(function (t, i) { return [xAt(i), yScale0(kum0[i])]; });
+        var lineD0 = xyKum0.map(function (p, i) { return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+        var areaD0 = areaPathD(lineD0, xyKum0.map(function (p) { return p[0]; }), baseline);
+        var yLabels = yAxisLabels(scaleMin0, scaleMax0, yScale0, W - 4, 4);
         var xLabelHari = e('text', { key: 'xlh', x: padL, y: H - 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'start', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' } }, formatTglPendek(range.start));
-        var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yKum0(kum0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+        var maxInIdx = -1, maxOutIdx = -1;
+        todays.forEach(function (t, i) {
+          if (t.tipe === 'pemasukan' && (maxInIdx === -1 || t.nominal > todays[maxInIdx].nominal)) maxInIdx = i;
+          if (t.tipe === 'pengeluaran' && (maxOutIdx === -1 || t.nominal > todays[maxOutIdx].nominal)) maxOutIdx = i;
+        });
+        var extremeLabels = [];
+        if (maxInIdx >= 0) extremeLabels.push(e('text', { key: 'lin', x: xAt(maxInIdx), y: yScale0(signed0[maxInIdx]) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(todays[maxInIdx].nominal)));
+        if (maxOutIdx >= 0) extremeLabels.push(e('text', { key: 'lout', x: xAt(maxOutIdx), y: baseline + Math.abs(yScale0(signed0[maxOutIdx]) - baseline) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(todays[maxOutIdx].nominal)));
+        var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yScale0(kum0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
         var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
         var timeLabel0 = activeIdx >= 0 ? e('text', { key: 'tj0', x: xAt(activeIdx), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, jamDari(todays[activeIdx].waktuInput)) : null;
         var xToIdx = function (svgX) {
@@ -688,7 +698,7 @@
             e('path', { d: areaD0, fill: 'url(#' + gradId(warnaGaris0) + ')', stroke: 'none' }),
             bars,
             e('path', { d: lineD0, fill: 'none', stroke: warnaGaris0, strokeWidth: 1.8 }),
-            crosshair, mark0, yLabels, xLabelHari, timeLabel0
+            crosshair, mark0, yLabels, xLabelHari, extremeLabels, timeLabel0
           )
         );
         if (activeIdx >= 0) {
