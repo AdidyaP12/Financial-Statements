@@ -373,19 +373,54 @@
   }
 
   function smoothPathD(pts) {
-    if (pts.length < 2) return '';
+    var n = pts.length;
+    if (n < 2) return '';
     var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    if (n === 2) return 'M' + xs[0].toFixed(1) + ',' + ys[0].toFixed(1) + ' L' + xs[1].toFixed(1) + ',' + ys[1].toFixed(1);
+    var m = [];
+    for (var i = 0; i < n - 1; i++) { m.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i] || 1)); }
+    var t = new Array(n);
+    t[0] = m[0]; t[n - 1] = m[n - 2];
+    for (var i2 = 1; i2 < n - 1; i2++) {
+      if (m[i2 - 1] === 0 || m[i2] === 0 || (m[i2 - 1] > 0) !== (m[i2] > 0)) t[i2] = 0;
+      else t[i2] = (m[i2 - 1] + m[i2]) / 2;
+    }
     var d = 'M' + xs[0].toFixed(1) + ',' + ys[0].toFixed(1);
-    for (var i = 0; i < xs.length - 1; i++) {
-      var x0 = i > 0 ? xs[i - 1] : xs[i], y0 = i > 0 ? ys[i - 1] : ys[i];
-      var x1 = xs[i], y1 = ys[i];
-      var x2 = xs[i + 1], y2 = ys[i + 1];
-      var x3 = i + 2 < xs.length ? xs[i + 2] : x2, y3 = i + 2 < xs.length ? ys[i + 2] : y2;
-      var c1x = x1 + (x2 - x0) / 6, c1y = y1 + (y2 - y0) / 6;
-      var c2x = x2 - (x3 - x1) / 6, c2y = y2 - (y3 - y1) / 6;
-      d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1);
+    for (var i3 = 0; i3 < n - 1; i3++) {
+      var h = xs[i3 + 1] - xs[i3];
+      var c1x = xs[i3] + h / 3, c1y = ys[i3] + t[i3] * h / 3;
+      var c2x = xs[i3 + 1] - h / 3, c2y = ys[i3 + 1] - t[i3 + 1] * h / 3;
+      d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + xs[i3 + 1].toFixed(1) + ',' + ys[i3 + 1].toFixed(1);
     }
     return d;
+  }
+  function niceNumber(range, round) {
+    if (range <= 0) return 1;
+    var exponent = Math.floor(Math.log10(range));
+    var fraction = range / Math.pow(10, exponent);
+    var niceFraction;
+    if (round) {
+      if (fraction < 1.5) niceFraction = 1;
+      else if (fraction < 2.25) niceFraction = 2;
+      else if (fraction < 3.75) niceFraction = 2.5;
+      else if (fraction < 7.5) niceFraction = 5;
+      else niceFraction = 10;
+    } else {
+      if (fraction <= 1) niceFraction = 1;
+      else if (fraction <= 2) niceFraction = 2;
+      else if (fraction <= 2.5) niceFraction = 2.5;
+      else if (fraction <= 5) niceFraction = 5;
+      else niceFraction = 10;
+    }
+    return niceFraction * Math.pow(10, exponent);
+  }
+  function niceAxisBounds(dataMin, dataMax, tickCount) {
+    if (dataMin === dataMax) { dataMin -= 1; dataMax += 1; }
+    var range = niceNumber(dataMax - dataMin, false);
+    var step = niceNumber(range / Math.max(1, tickCount - 1), true);
+    var niceMin = Math.floor(dataMin / step) * step;
+    var niceMax = Math.ceil(dataMax / step) * step;
+    return { min: niceMin, max: niceMax, step: step };
   }
   function areaPathD(lineD, xs, baseY) {
     if (!lineD) return '';
@@ -428,9 +463,9 @@
     return e('div', { style: { marginBottom: 10 } },
       e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, isSingle ? arrows[0] : null, pill, isSingle ? arrows[1] : null),
       open ? e('div', { style: { display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' } },
-        e('input', { type: 'date', value: start, onChange: function (ev) { onChange(ev.target.value, ev.target.value > end ? ev.target.value : end); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) }),
+        e('input', { type: 'date', value: start, onChange: function (ev) { onChange(ev.target.value, ev.target.value > end ? ev.target.value : end); setOpen(false); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) }),
         e('span', { style: { color: '#5f6a78', fontSize: 12 } }, '\u2013'),
-        e('input', { type: 'date', value: end, onChange: function (ev) { onChange(ev.target.value < start ? ev.target.value : start, ev.target.value); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) })
+        e('input', { type: 'date', value: end, onChange: function (ev) { onChange(ev.target.value < start ? ev.target.value : start, ev.target.value); setOpen(false); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) })
       ) : null
     );
   }
@@ -642,7 +677,7 @@
       if (todays.length === 0) {
         chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
       } else {
-        var W = 300, H = 130, padL = 32, padR = 36, padT = 26, padB = 18;
+        var W = 300, H = 130, padL = 32, padR = 46, padT = 26, padB = 18;
         var n = todays.length;
         var signed0 = todays.map(function (t) { return t.tipe === 'pengeluaran' ? -t.nominal : t.nominal; });
         var cum0 = 0;
@@ -651,10 +686,8 @@
         var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
         var rawMax0 = Math.max.apply(null, signed0.concat(kum0).concat([0]));
         var rawMin0 = Math.min.apply(null, signed0.concat(kum0).concat([0]));
-        var span0 = (rawMax0 - rawMin0) || 1;
-        var pad0 = span0 * 0.18;
-        var scaleMax0 = rawMax0 + pad0;
-        var scaleMin0 = rawMin0 - pad0;
+        var bounds0 = niceAxisBounds(rawMin0, rawMax0, 5);
+        var scaleMin0 = bounds0.min, scaleMax0 = bounds0.max;
         var scaleSpan0 = (scaleMax0 - scaleMin0) || 1;
         function yScale0(v) { return H - padB - ((v - scaleMin0) / scaleSpan0) * (H - padT - padB); }
         var baseline = yScale0(0);
@@ -671,9 +704,11 @@
           return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.55 });
         });
         var xyKum0 = todays.map(function (t, i) { return [xAt(i), yScale0(kum0[i])]; });
-        var lineD0 = xyKum0.map(function (p, i) { return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+        var lineD0 = smoothPathD(xyKum0);
         var areaD0 = areaPathD(lineD0, xyKum0.map(function (p) { return p[0]; }), baseline);
-        var yLabels = yAxisLabels(scaleMin0, scaleMax0, yScale0, W - 4, 4);
+        var yTicks0 = [];
+        for (var tv0 = scaleMin0; tv0 <= scaleMax0 + 1e-6; tv0 += bounds0.step) yTicks0.push(Math.round(tv0));
+        var yLabels = yTicks0.map(function (v, i) { return e('text', { key: 'yl' + i, x: W - 4, y: yScale0(v) + 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'end', fontFamily: 'SF Mono, Courier New, monospace' }, shortFmt(v)); });
         var xLabelHari = e('text', { key: 'xlh', x: padL, y: H - 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'start', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' } }, formatTglPendek(range.start));
         var maxInIdx = -1, maxOutIdx = -1;
         todays.forEach(function (t, i) {
@@ -681,8 +716,9 @@
           if (t.tipe === 'pengeluaran' && (maxOutIdx === -1 || t.nominal > todays[maxOutIdx].nominal)) maxOutIdx = i;
         });
         var extremeLabels = [];
-        if (maxInIdx >= 0) extremeLabels.push(e('text', { key: 'lin', x: xAt(maxInIdx), y: yScale0(signed0[maxInIdx]) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(todays[maxInIdx].nominal)));
-        if (maxOutIdx >= 0) extremeLabels.push(e('text', { key: 'lout', x: xAt(maxOutIdx), y: baseline + Math.abs(yScale0(signed0[maxOutIdx]) - baseline) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(todays[maxOutIdx].nominal)));
+        var labelClampX = W - padR - 16;
+        if (maxInIdx >= 0) extremeLabels.push(e('text', { key: 'lin', x: Math.min(xAt(maxInIdx), labelClampX), y: yScale0(signed0[maxInIdx]) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(todays[maxInIdx].nominal)));
+        if (maxOutIdx >= 0) extremeLabels.push(e('text', { key: 'lout', x: Math.min(xAt(maxOutIdx), labelClampX), y: baseline + Math.abs(yScale0(signed0[maxOutIdx]) - baseline) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(todays[maxOutIdx].nominal)));
         var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yScale0(kum0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
         var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
         var timeLabel0 = activeIdx >= 0 ? e('text', { key: 'tj0', x: xAt(activeIdx), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, jamDari(todays[activeIdx].waktuInput)) : null;
