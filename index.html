@@ -385,6 +385,16 @@
       if (m[i2 - 1] === 0 || m[i2] === 0 || (m[i2 - 1] > 0) !== (m[i2] > 0)) t[i2] = 0;
       else t[i2] = (m[i2 - 1] + m[i2]) / 2;
     }
+    for (var k = 0; k < n - 1; k++) {
+      if (m[k] === 0) { t[k] = 0; t[k + 1] = 0; continue; }
+      var alpha = t[k] / m[k], beta = t[k + 1] / m[k];
+      var s2 = alpha * alpha + beta * beta;
+      if (s2 > 9) {
+        var tau = 3 / Math.sqrt(s2);
+        t[k] = tau * alpha * m[k];
+        t[k + 1] = tau * beta * m[k];
+      }
+    }
     var d = 'M' + xs[0].toFixed(1) + ',' + ys[0].toFixed(1);
     for (var i3 = 0; i3 < n - 1; i3++) {
       var h = xs[i3 + 1] - xs[i3];
@@ -445,15 +455,20 @@
   function DateRangePicker(props) {
     var start = props.start, end = props.end, onChange = props.onChange, accent = props.accent || '#7fb37a';
     var s_open = useState(false); var open = s_open[0], setOpen = s_open[1];
+    var s_touched = useState(false); var touched = s_touched[0], setTouched = s_touched[1];
     var isSingle = start === end;
     function shiftDay(delta) {
       var d = new Date(start + 'T00:00:00'); d.setDate(d.getDate() + delta);
       var iso = toISODate(d);
       onChange(iso, iso);
     }
+    function handleFieldEdit() {
+      if (touched) { setOpen(false); setTouched(false); }
+      else { setTouched(true); }
+    }
     var label = isSingle ? formatTglPendek(start) : (formatTglPendek(start) + ' - ' + formatTglPendek(end));
     var pill = e('button', {
-      onClick: function () { setOpen(!open); },
+      onClick: function () { if (!open) setTouched(false); setOpen(!open); },
       style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid #2c3644', borderRadius: 20, padding: '5px 12px', color: accent, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }
     }, label, e(CalendarIcon, null));
     var arrows = isSingle ? [
@@ -463,9 +478,9 @@
     return e('div', { style: { marginBottom: 10 } },
       e('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, isSingle ? arrows[0] : null, pill, isSingle ? arrows[1] : null),
       open ? e('div', { style: { display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' } },
-        e('input', { type: 'date', value: start, onChange: function (ev) { onChange(ev.target.value, ev.target.value > end ? ev.target.value : end); setOpen(false); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) }),
+        e('input', { type: 'date', value: start, onChange: function (ev) { onChange(ev.target.value, ev.target.value > end ? ev.target.value : end); handleFieldEdit(); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) }),
         e('span', { style: { color: '#5f6a78', fontSize: 12 } }, '\u2013'),
-        e('input', { type: 'date', value: end, onChange: function (ev) { onChange(ev.target.value < start ? ev.target.value : start, ev.target.value); setOpen(false); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) })
+        e('input', { type: 'date', value: end, onChange: function (ev) { onChange(ev.target.value < start ? ev.target.value : start, ev.target.value); handleFieldEdit(); }, style: Object.assign({}, inputStyle, { width: 'auto', fontSize: 12, padding: '5px 7px' }) })
       ) : null
     );
   }
@@ -689,7 +704,8 @@
         var bounds0 = niceAxisBounds(rawMin0, rawMax0, 5);
         var scaleMin0 = bounds0.min, scaleMax0 = bounds0.max;
         var scaleSpan0 = (scaleMax0 - scaleMin0) || 1;
-        function yScale0(v) { return H - padB - ((v - scaleMin0) / scaleSpan0) * (H - padT - padB); }
+        var innerM0 = 10;
+        function yScale0(v) { return (H - padB - innerM0) - ((v - scaleMin0) / scaleSpan0) * (H - padT - padB - 2 * innerM0); }
         var baseline = yScale0(0);
         var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
         function xAt(i) { return n > 1 ? padL + i * xStep : W / 2; }
