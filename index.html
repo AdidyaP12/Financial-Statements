@@ -690,7 +690,21 @@
           return ia - ib;
         });
       if (todays.length === 0) {
-        chartEl = e('div', { style: { fontSize: 13, color: '#5f6a78' } }, 'Belum ada transaksi tanggal ini.');
+        var We = 300, He = 130, padLe = 32, padRe = 46, padTe = 26, padBe = 18;
+        var boundsE = niceAxisBounds(-1, 1, 5);
+        function yScaleE(v) { return He - padBe - ((v - boundsE.min) / ((boundsE.max - boundsE.min) || 1)) * (He - padTe - padBe); }
+        var baselineE = yScaleE(0);
+        var yTicksE = [];
+        for (var tve = boundsE.min; tve <= boundsE.max + 1e-6; tve += boundsE.step) yTicksE.push(Math.round(tve));
+        var yLabelsE = yTicksE.map(function (v, i) { return e('text', { key: 'yle' + i, x: We - 4, y: yScaleE(v) + 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'end', fontFamily: 'SF Mono, Courier New, monospace' }, shortFmt(v)); });
+        var xLabelE = e('text', { key: 'xle', x: padLe, y: He - 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'start', fontFamily: 'SF Mono, Courier New, monospace', style: { userSelect: 'none' } }, formatTglPendek(range.start));
+        chartEl = e('div', null,
+          e('svg', { viewBox: '0 0 ' + We + ' ' + He, style: { width: '100%', height: 148, display: 'block' } },
+            e(AreaGradient, { color: HIJAU }),
+            e('line', { x1: padLe, y1: baselineE, x2: We - padRe, y2: baselineE, stroke: HIJAU, strokeWidth: 1.8 }),
+            yLabelsE, xLabelE
+          )
+        );
       } else {
         var W = 300, H = 130, padL = 32, padR = 46, padT = 26, padB = 18;
         var n = todays.length;
