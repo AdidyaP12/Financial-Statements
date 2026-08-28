@@ -690,6 +690,7 @@
           return ia - ib;
         });
       if (todays.length === 0) {
+        displayNominal = 0;
         var We = 300, He = 130, padLe = 32, padRe = 46, padTe = 26, padBe = 18;
         var boundsE = niceAxisBounds(-1, 1, 5);
         function yScaleE(v) { return He - padBe - ((v - boundsE.min) / ((boundsE.max - boundsE.min) || 1)) * (He - padTe - padBe); }
@@ -712,6 +713,7 @@
         var cum0 = 0;
         var kum0 = signed0.map(function (v) { cum0 += v; return cum0; });
         var totalNet0 = kum0.length ? kum0[kum0.length - 1] : 0;
+        displayNominal = totalNet0;
         var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
         var rawMax0 = Math.max.apply(null, signed0.concat(kum0).concat([0]));
         var rawMin0 = Math.min.apply(null, signed0.concat(kum0).concat([0]));
@@ -769,7 +771,6 @@
         );
         if (activeIdx >= 0) {
           var t2 = todays[activeIdx];
-          displayNominal = kum0[activeIdx];
           drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10, fontSize: 13 } },
             jamDari(t2.waktuInput) + ' \u00b7 ' + t2.jenis + (t2.kategori ? ' \u00b7 ' + t2.kategori : '') + ' \u2014 ',
             e('span', { className: 'num', style: { color: t2.tipe === 'pengeluaran' ? MERAH : HIJAU } }, (t2.tipe === 'pengeluaran' ? '-' : '+') + fmt(t2.nominal))
