@@ -681,8 +681,8 @@
 
     var chartEl, drillEl = null, displayNominal = saldoNow;
 
-    if (lebar === 0) {
-      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === range.start; })
+    if (lebar <= 1) {
+      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal >= range.start && t.tanggal <= range.end; })
         .slice().sort(function (a, b) {
           var wa = new Date(a.waktuInput || 0).getTime(), wb = new Date(b.waktuInput || 0).getTime();
           if (wa !== wb) return wa - wb;
