@@ -681,8 +681,8 @@
 
     var chartEl, drillEl = null, displayNominal = saldoNow;
 
-    if (lebar <= 1) {
-      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal >= range.start && t.tanggal <= range.end; })
+    if (lebar === 0) {
+      var todays = transaksi.filter(function (t) { return (t.tipe === 'pemasukan' || t.tipe === 'pengeluaran') && t.tanggal === range.start; })
         .slice().sort(function (a, b) {
           var wa = new Date(a.waktuInput || 0).getTime(), wb = new Date(b.waktuInput || 0).getTime();
           if (wa !== wb) return wa - wb;
@@ -776,6 +776,81 @@
             e('span', { className: 'num', style: { color: t2.tipe === 'pengeluaran' ? MERAH : HIJAU } }, (t2.tipe === 'pengeluaran' ? '-' : '+') + fmt(t2.nominal))
           );
         }
+      }
+    } else if (lebar === 1) {
+      var dates2d = enumerateDates(range.start, range.end);
+      var netIn2d = {}, netOut2d = {};
+      transaksi.forEach(function (t) {
+        if (t.tipe === 'pemasukan') netIn2d[t.tanggal] = (netIn2d[t.tanggal] || 0) + t.nominal;
+        else if (t.tipe === 'pengeluaran') netOut2d[t.tanggal] = (netOut2d[t.tanggal] || 0) + t.nominal;
+      });
+      var cum2d = 0;
+      var pts2d = dates2d.map(function (d) {
+        var inV = netIn2d[d] || 0, outV = netOut2d[d] || 0;
+        cum2d += (inV - outV);
+        return { tanggal: d, inV: inV, outV: outV, kumulatif: cum2d };
+      });
+      var totalNet2d = pts2d.length ? pts2d[pts2d.length - 1].kumulatif : 0;
+      displayNominal = totalNet2d;
+      var warnaGaris2d = totalNet2d >= 0 ? HIJAU : MERAH;
+      var W2d = 300, H2d = 130, padL2d = 32, padR2d = 46, padT2d = 26, padB2d = 18;
+      var n2d = pts2d.length;
+      var rawMax2d = Math.max.apply(null, pts2d.map(function (p) { return p.inV; }).concat(pts2d.map(function (p) { return p.kumulatif; })).concat([0]));
+      var rawMin2d = Math.min.apply(null, pts2d.map(function (p) { return -p.outV; }).concat(pts2d.map(function (p) { return p.kumulatif; })).concat([0]));
+      var bounds2d = niceAxisBounds(rawMin2d, rawMax2d, 5);
+      var innerM2d = 10;
+      function yScale2d(v) { return (H2d - padB2d - innerM2d) - ((v - bounds2d.min) / ((bounds2d.max - bounds2d.min) || 1)) * (H2d - padT2d - padB2d - 2 * innerM2d); }
+      var baseline2d = yScale2d(0);
+      var xStep2d = n2d > 1 ? (W2d - padL2d - padR2d) / (n2d - 1) : 0;
+      function xAt2d(i) { return n2d > 1 ? padL2d + i * xStep2d : W2d / 2; }
+      var barW2d = Math.max(3, Math.min(16, xStep2d * 0.28));
+      var activeIdx2d = active !== null ? dates2d.indexOf(active) : -1;
+      var bars2d = [];
+      pts2d.forEach(function (p, i) {
+        var isAct = i === activeIdx2d;
+        var yIn = yScale2d(p.inV);
+        bars2d.push(e('rect', { key: 'in' + p.tanggal, x: xAt2d(i) - barW2d - 1, y: yIn, width: barW2d, height: Math.max(1, baseline2d - yIn), rx: 2, fill: HIJAU, opacity: isAct ? 1 : 0.55 }));
+        var yOut = yScale2d(-p.outV);
+        bars2d.push(e('rect', { key: 'out' + p.tanggal, x: xAt2d(i) + 1, y: baseline2d, width: barW2d, height: Math.max(1, yOut - baseline2d), rx: 2, fill: MERAH, opacity: isAct ? 1 : 0.55 }));
+      });
+      var xyKum2d = pts2d.map(function (p, i) { return [xAt2d(i), yScale2d(p.kumulatif)]; });
+      var lineD2d = smoothPathD(xyKum2d);
+      var areaD2d = areaPathD(lineD2d, xyKum2d.map(function (p) { return p[0]; }), baseline2d);
+      var yTicks2d = [];
+      for (var tv2d = bounds2d.min; tv2d <= bounds2d.max + 1e-6; tv2d += bounds2d.step) yTicks2d.push(Math.round(tv2d));
+      var yLabels2d = yTicks2d.map(function (v, i) { return e('text', { key: 'yl2d' + i, x: W2d - 4, y: yScale2d(v) + 3, fill: '#5f6a78', fontSize: 9, textAnchor: 'end', fontFamily: 'SF Mono, Courier New, monospace' }, shortFmt(v)); });
+      var xLabels2d = xAxisDayLabels(dates2d, xAt2d, H2d - 3);
+      var maxInIdx2d = 0, maxOutIdx2d = 0;
+      pts2d.forEach(function (p, i) { if (p.inV > pts2d[maxInIdx2d].inV) maxInIdx2d = i; if (p.outV > pts2d[maxOutIdx2d].outV) maxOutIdx2d = i; });
+      var labelClamp2d = W2d - padR2d - 16;
+      var extreme2d = [];
+      if (pts2d[maxInIdx2d].inV > 0) extreme2d.push(e('text', { key: 'exin', x: Math.min(xAt2d(maxInIdx2d), labelClamp2d), y: yScale2d(pts2d[maxInIdx2d].inV) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(pts2d[maxInIdx2d].inV)));
+      if (pts2d[maxOutIdx2d].outV > 0) extreme2d.push(e('text', { key: 'exout', x: Math.min(xAt2d(maxOutIdx2d), labelClamp2d), y: yScale2d(-pts2d[maxOutIdx2d].outV) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(pts2d[maxOutIdx2d].outV)));
+      var mark2d = activeIdx2d >= 0 ? e('circle', { key: 'sel2d', cx: xAt2d(activeIdx2d), cy: yScale2d(pts2d[activeIdx2d].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+      var crosshair2d = activeIdx2d >= 0 ? e('line', { x1: xAt2d(activeIdx2d), y1: padT2d - 6, x2: xAt2d(activeIdx2d), y2: H2d - padB2d, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
+      var timeLabel2d = activeIdx2d >= 0 ? e('text', { key: 'tj2d', x: xAt2d(activeIdx2d), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, formatTglLengkap(dates2d[activeIdx2d])) : null;
+      var xToIdx2d = function (svgX) {
+        var idx = n2d > 1 ? Math.round((svgX - padL2d) / xStep2d) : 0;
+        return Math.max(0, Math.min(n2d - 1, idx));
+      };
+      var handlers2d = makeHandlers(W2d, function (svgX) { return dates2d[xToIdx2d(svgX)]; });
+      chartEl = e('div', null,
+        e('svg', Object.assign({ ref: svgRef, viewBox: '0 0 ' + W2d + ' ' + H2d, style: { width: '100%', height: 148, display: 'block', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } }, handlers2d),
+          e(AreaGradient, { color: warnaGaris2d }),
+          e('line', { x1: padL2d, y1: baseline2d, x2: W2d - padR2d, y2: baseline2d, stroke: '#232c37', strokeWidth: 1 }),
+          e('path', { d: areaD2d, fill: 'url(#' + gradId(warnaGaris2d) + ')', stroke: 'none' }),
+          bars2d,
+          e('path', { d: lineD2d, fill: 'none', stroke: warnaGaris2d, strokeWidth: 1.8 }),
+          crosshair2d, mark2d, yLabels2d, xLabels2d, extreme2d, timeLabel2d
+        )
+      );
+      if (activeIdx2d >= 0) {
+        var pAct2d = pts2d[activeIdx2d];
+        drillEl = e('div', { style: { marginTop: 12, borderTop: '1px solid #232c37', paddingTop: 10 } },
+          e('div', { style: { fontSize: 11, color: '#8b95a3', marginBottom: 6 } }, formatTglLengkap(pAct2d.tanggal)),
+          e('div', { className: 'row' }, e('span', { style: { fontSize: 13 } }, 'Net Pemasukan'), e('span', { className: 'num', style: { fontSize: 13, color: HIJAU } }, '+' + fmt(pAct2d.inV))),
+          e('div', { className: 'row' }, e('span', { style: { fontSize: 13 } }, 'Net Pengeluaran'), e('span', { className: 'num', style: { fontSize: 13, color: MERAH } }, '-' + fmt(pAct2d.outV)))
+        );
       }
     } else {
       var dates3 = enumerateDates(range.start, range.end);
