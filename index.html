@@ -808,10 +808,14 @@
       var bars2d = [];
       pts2d.forEach(function (p, i) {
         var isAct = i === activeIdx2d;
-        var yIn = yScale2d(p.inV);
-        bars2d.push(e('rect', { key: 'in' + p.tanggal, x: xAt2d(i) - barW2d - 1, y: yIn, width: barW2d, height: Math.max(1, baseline2d - yIn), rx: 2, fill: HIJAU, opacity: isAct ? 1 : 0.55 }));
-        var yOut = yScale2d(-p.outV);
-        bars2d.push(e('rect', { key: 'out' + p.tanggal, x: xAt2d(i) + 1, y: baseline2d, width: barW2d, height: Math.max(1, yOut - baseline2d), rx: 2, fill: MERAH, opacity: isAct ? 1 : 0.55 }));
+        if (p.inV > 0) {
+          var yIn = yScale2d(p.inV);
+          bars2d.push(e('rect', { key: 'in' + p.tanggal, x: xAt2d(i) - barW2d - 1, y: yIn, width: barW2d, height: Math.max(1, baseline2d - yIn), rx: 2, fill: HIJAU, opacity: isAct ? 1 : 0.55 }));
+        }
+        if (p.outV > 0) {
+          var yOut = yScale2d(-p.outV);
+          bars2d.push(e('rect', { key: 'out' + p.tanggal, x: xAt2d(i) + 1, y: baseline2d, width: barW2d, height: Math.max(1, yOut - baseline2d), rx: 2, fill: MERAH, opacity: isAct ? 1 : 0.55 }));
+        }
       });
       var xyKum2d = pts2d.map(function (p, i) { return [xAt2d(i), yScale2d(p.kumulatif)]; });
       var lineD2d = smoothPathD(xyKum2d);
@@ -828,7 +832,8 @@
       if (pts2d[maxOutIdx2d].outV > 0) extreme2d.push(e('text', { key: 'exout', x: Math.min(xAt2d(maxOutIdx2d), labelClamp2d), y: yScale2d(-pts2d[maxOutIdx2d].outV) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(pts2d[maxOutIdx2d].outV)));
       var mark2d = activeIdx2d >= 0 ? e('circle', { key: 'sel2d', cx: xAt2d(activeIdx2d), cy: yScale2d(pts2d[activeIdx2d].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
       var crosshair2d = activeIdx2d >= 0 ? e('line', { x1: xAt2d(activeIdx2d), y1: padT2d - 6, x2: xAt2d(activeIdx2d), y2: H2d - padB2d, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
-      var timeLabel2d = activeIdx2d >= 0 ? e('text', { key: 'tj2d', x: xAt2d(activeIdx2d), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, formatTglLengkap(dates2d[activeIdx2d])) : null;
+      var timeAnchor2d = activeIdx2d === 0 ? 'start' : (activeIdx2d === n2d - 1 ? 'end' : 'middle');
+      var timeLabel2d = activeIdx2d >= 0 ? e('text', { key: 'tj2d', x: xAt2d(activeIdx2d), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: timeAnchor2d, fontFamily: 'SF Mono, Courier New, monospace' }, formatTglLengkap(dates2d[activeIdx2d])) : null;
       var xToIdx2d = function (svgX) {
         var idx = n2d > 1 ? Math.round((svgX - padL2d) / xStep2d) : 0;
         return Math.max(0, Math.min(n2d - 1, idx));
