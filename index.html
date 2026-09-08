@@ -715,8 +715,8 @@
         var totalNet0 = kum0.length ? kum0[kum0.length - 1] : 0;
         displayNominal = totalNet0;
         var warnaGaris0 = totalNet0 >= 0 ? HIJAU : MERAH;
-        var rawMax0 = Math.max.apply(null, signed0.concat(kum0).concat([0]));
-        var rawMin0 = Math.min.apply(null, signed0.concat(kum0).concat([0]));
+        var rawMax0 = Math.max.apply(null, signed0.concat([0]));
+        var rawMin0 = Math.min.apply(null, signed0.concat([0]));
         var bounds0 = niceAxisBounds(rawMin0, rawMax0, 5);
         var scaleMin0 = bounds0.min, scaleMax0 = bounds0.max;
         var scaleSpan0 = (scaleMax0 - scaleMin0) || 1;
@@ -735,7 +735,7 @@
           var isActive = i === activeIdx;
           return e('rect', { key: t.id, x: xAt(i) - barW / 2, y: y, width: barW, height: Math.max(1, h), rx: 2, fill: isNeg ? MERAH : HIJAU, opacity: isActive ? 1 : 0.55 });
         });
-        var xyKum0 = todays.map(function (t, i) { return [xAt(i), yScale0(kum0[i])]; });
+        var xyKum0 = todays.map(function (t, i) { return [xAt(i), yScale0(signed0[i])]; });
         var lineD0 = smoothPathD(xyKum0);
         var areaD0 = areaPathD(lineD0, xyKum0.map(function (p) { return p[0]; }), baseline);
         var yTicks0 = [];
@@ -751,7 +751,7 @@
         var labelClampX = W - padR - 16;
         if (maxInIdx >= 0) extremeLabels.push(e('text', { key: 'lin', x: Math.min(xAt(maxInIdx), labelClampX), y: yScale0(signed0[maxInIdx]) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(todays[maxInIdx].nominal)));
         if (maxOutIdx >= 0) extremeLabels.push(e('text', { key: 'lout', x: Math.min(xAt(maxOutIdx), labelClampX), y: baseline + Math.abs(yScale0(signed0[maxOutIdx]) - baseline) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(todays[maxOutIdx].nominal)));
-        var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yScale0(kum0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+        var mark0 = activeIdx >= 0 ? e('circle', { key: 'sel0', cx: xAt(activeIdx), cy: yScale0(signed0[activeIdx]), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
         var crosshair = activeIdx >= 0 ? e('line', { x1: xAt(activeIdx), y1: padT - 6, x2: xAt(activeIdx), y2: H - padB, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
         var timeLabel0 = activeIdx >= 0 ? e('text', { key: 'tj0', x: xAt(activeIdx), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, jamDari(todays[activeIdx].waktuInput)) : null;
         var xToIdx = function (svgX) {
@@ -795,8 +795,8 @@
       var warnaGaris2d = totalNet2d >= 0 ? HIJAU : MERAH;
       var W2d = 300, H2d = 130, padL2d = 32, padR2d = 46, padT2d = 26, padB2d = 18;
       var n2d = pts2d.length;
-      var rawMax2d = Math.max.apply(null, pts2d.map(function (p) { return p.inV; }).concat(pts2d.map(function (p) { return p.kumulatif; })).concat([0]));
-      var rawMin2d = Math.min.apply(null, pts2d.map(function (p) { return -p.outV; }).concat(pts2d.map(function (p) { return p.kumulatif; })).concat([0]));
+      var rawMax2d = Math.max.apply(null, pts2d.map(function (p) { return p.inV; }).concat([0]));
+      var rawMin2d = Math.min.apply(null, pts2d.map(function (p) { return -p.outV; }).concat([0]));
       var bounds2d = niceAxisBounds(rawMin2d, rawMax2d, 5);
       var innerM2d = 10;
       function yScale2d(v) { return (H2d - padB2d - innerM2d) - ((v - bounds2d.min) / ((bounds2d.max - bounds2d.min) || 1)) * (H2d - padT2d - padB2d - 2 * innerM2d); }
@@ -817,7 +817,7 @@
           bars2d.push(e('rect', { key: 'out' + p.tanggal, x: xAt2d(i) + 1, y: baseline2d, width: barW2d, height: Math.max(1, yOut - baseline2d), rx: 2, fill: MERAH, opacity: isAct ? 1 : 0.55 }));
         }
       });
-      var xyKum2d = pts2d.map(function (p, i) { return [xAt2d(i), yScale2d(p.kumulatif)]; });
+      var xyKum2d = pts2d.map(function (p, i) { return [xAt2d(i), yScale2d(p.inV - p.outV)]; });
       var lineD2d = smoothPathD(xyKum2d);
       var areaD2d = areaPathD(lineD2d, xyKum2d.map(function (p) { return p[0]; }), baseline2d);
       var yTicks2d = [];
@@ -830,7 +830,7 @@
       var extreme2d = [];
       if (pts2d[maxInIdx2d].inV > 0) extreme2d.push(e('text', { key: 'exin', x: Math.min(xAt2d(maxInIdx2d), labelClamp2d), y: yScale2d(pts2d[maxInIdx2d].inV) - 8, fill: HIJAU, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '+' + shortFmt(pts2d[maxInIdx2d].inV)));
       if (pts2d[maxOutIdx2d].outV > 0) extreme2d.push(e('text', { key: 'exout', x: Math.min(xAt2d(maxOutIdx2d), labelClamp2d), y: yScale2d(-pts2d[maxOutIdx2d].outV) + 12, fill: MERAH, fontSize: 10, textAnchor: 'middle', fontFamily: 'SF Mono, Courier New, monospace' }, '-' + shortFmt(pts2d[maxOutIdx2d].outV)));
-      var mark2d = activeIdx2d >= 0 ? e('circle', { key: 'sel2d', cx: xAt2d(activeIdx2d), cy: yScale2d(pts2d[activeIdx2d].kumulatif), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
+      var mark2d = activeIdx2d >= 0 ? e('circle', { key: 'sel2d', cx: xAt2d(activeIdx2d), cy: yScale2d(pts2d[activeIdx2d].inV - pts2d[activeIdx2d].outV), r: 5, fill: '#e8dcc0', stroke: '#0f151b', strokeWidth: 1 }) : null;
       var crosshair2d = activeIdx2d >= 0 ? e('line', { x1: xAt2d(activeIdx2d), y1: padT2d - 6, x2: xAt2d(activeIdx2d), y2: H2d - padB2d, stroke: '#5f6a78', strokeWidth: 1, strokeDasharray: '3,3' }) : null;
       var timeAnchor2d = activeIdx2d === 0 ? 'start' : (activeIdx2d === n2d - 1 ? 'end' : 'middle');
       var timeLabel2d = activeIdx2d >= 0 ? e('text', { key: 'tj2d', x: xAt2d(activeIdx2d), y: 12, fill: '#e8dcc0', fontSize: 10, textAnchor: timeAnchor2d, fontFamily: 'SF Mono, Courier New, monospace' }, formatTglLengkap(dates2d[activeIdx2d])) : null;
