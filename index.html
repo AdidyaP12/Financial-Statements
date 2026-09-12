@@ -777,7 +777,7 @@
           );
         }
       }
-    } else if (lebar === 1) {
+    } else if (lebar >= 1 && lebar <= 6) {
       var dates2d = enumerateDates(range.start, range.end);
       var netIn2d = {}, netOut2d = {};
       transaksi.forEach(function (t) {
